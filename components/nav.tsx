@@ -19,8 +19,8 @@ export default function Nav() {
               <Image src={Logo} alt="logo" priority quality={100} />
             </div>
             <nav className="flex space-x-16 text-sm font-bold max-sm:hidden">
-              <Link href="#patients">For Patients</Link>
-              <Link href="#providers">For Providers</Link>
+              <Link href="#pharmacies">For Patients</Link>
+              <Link href="#patients">For Providers</Link>
               
             </nav>
           </div>
@@ -45,10 +45,10 @@ export default function Nav() {
           </div>
           <nav className="space-y-6 px-6 py-8 text-center text-lg/5 font-bold text-[#066DB7]">
             <div className="flex flex-col space-y-6">
-              <Link href="#patients" onClick={() => setIsOpen(false)}>
+              <Link href="#pharmacies" onClick={() => setIsOpen(false)}>
                 For Patients
               </Link>
-              <Link href="#providers" onClick={() => setIsOpen(false)}>
+              <Link href="#patients" onClick={() => setIsOpen(false)}>
                 For Providers
               </Link>
               <a href="https://www.ilarahealth.com/" target="_blank" rel="noopener">

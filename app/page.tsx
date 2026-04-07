@@ -10,7 +10,12 @@ import Maternal from '@/images/antenatal-postnatal.jpg';
 import Artboard from '@/images/artboard.png';
 import BabaDogo from '@/images/baba-dogo.png';
 import PharmacistHero from '@/images/pharmacist-hero.png';
-import Consultations from '@/images/consultations.png';
+import Stocking from '@/images/stocking.png';
+import Staffing from '@/images/staffing.png';
+import Operations from '@/images/operations.png';
+import Compliance from '@/images/compliance.png';
+import BrandMarketing from '@/images/brand-marketing.png';
+import HMIS from '@/images/hmis.png';
 import Dawa from '@/images/dawa.png';
 import EyeCare from '@/images/eye-care.png';
 import FooterLogo from '@/images/footer_logo.png';
@@ -48,7 +53,7 @@ export default function Home() {
                   </ul>
                   <div>
                     <a
-                      href="#patients"
+                      href="#pharmacies"
                       className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#066DB7] hover:bg-[#066DB7] hover:text-white sm:px-6 sm:py-2"
                     >
                       <span className="text-xs font-bold leading-tight tracking-tight sm:text-lg">
@@ -67,13 +72,13 @@ export default function Home() {
                   </h2>
                   <p className="text-xl text-[#111827]">You can expect:</p>
                   <ul className="list-disc space-y-2 pl-6 text-xl text-[#111827]">
-                    <li>End-to-end pharmacy management</li>
+                    <li>End-to-end management</li>
                     <li>Free complimentary HMIS system</li>
                     <li>Higher earnings</li>
                   </ul>
                   <div>
                     <a
-                      href="#providers"
+                      href="#patients"
                       className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#066DB7] hover:bg-[#066DB7] hover:text-white sm:px-6 sm:py-2"
                     >
                       <span className="text-xs font-bold leading-tight tracking-tight sm:text-lg">
@@ -105,11 +110,11 @@ export default function Home() {
             <Dialog>
               <DialogTrigger asChild>
                 <div className="aspect-h-[110] aspect-w-[343] cursor-pointer overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                  <Image src={Consultations} alt="" fill className="object-cover" />
+                  <Image src={Stocking} alt="" fill className="object-cover" />
                   <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
-                    <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">Consultations</p>
+                    <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">Stocking</p>
                   </div>
                 </div>
               </DialogTrigger>
@@ -117,21 +122,24 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={Consultations} alt="" fill className="object-cover" />
+                      <Image src={Stocking} alt="" fill className="object-cover" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
-                    <p className="text-2xl font-bold sm:text-[2rem]/none">Consultations</p>
+                    <p className="text-2xl font-bold sm:text-[2rem]/none">Stocking</p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      Our services blend expert knowledge with compassionate support, ensuring you feel heard and
-                      understood. With treatment plans tailored just for you, clear communication, and utmost respect
-                      for your privacy, we&apos;re here to make your healthcare journey seamless and comfortable. <br />
+                      Our pharmacies are fully-stocked with all essential medicines needed to treat all conditions expected in primary health care. 
+                      We use advanced data techniques to plan for expected demand ensuring you are guaranteed to find the medication you need on our shelf, everytime you need it.
+                      <br />
+                      We enforce rigorous vetting of our suppliers and the medicines we purchase to ensure that only trusted-quality
+                      medication gets to our patients.
+                      <br />
                       <br />
                       <span className="italic">
-                        Take the first step towards personalized care.{' '}
-                        <span className="font-bold">Visit the nearest facility</span> to experience our compassionate
-                        approach to healthcare or <span className="font-bold">contact us</span> on{' '}
-                        <span className="font-bold">0742013541</span> to speak to our online doctor
+                        Take the first step towards comprehensive care.{' '}
+                        <span className="font-bold">Visit the nearest facility</span> to experience our one-stop approach to
+                        healthcare or <span className="font-bold">contact us</span> {' '}
+                        <span className="font-bold">0719 807 978</span> to speak to our representative.
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -143,12 +151,12 @@ export default function Home() {
               <DialogTrigger asChild>
                 <div className="cursor-pointer overflow-hidden">
                   <div className="aspect-h-[110] aspect-w-[343] overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                    <Image src={Artboard} alt="" fill className="object-cover object-[83%]" />
+                    <Image src={Operations} alt="" fill className="object-cover object-[83%]" />
                     <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                     <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                       <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                       <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                        Pharmacy <span className="font-normal">Services</span>
+                        Operations management <span className="font-normal"></span>
                       </p>
                     </div>
                   </div>
@@ -158,22 +166,21 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={Artboard} alt="" fill className="object-cover object-[83%]" />
+                      <Image src={Operations} alt="" fill className="object-cover object-[83%]" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Pharmacy <span className="font-normal">Services</span>
+                      Pharmacy Operations <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      Quality medication shouldn&apos;t come with a heavy price tag. We&apos;re committed to making sure
-                      you have access to affordable medications without compromising on quality.
+                      From restocking to dispensing & billing, we handle end-to-end operations so you can be assured of great customer service that you can always count on.
                       <br />
                       <br />
                       <span className="italic">
-                        Get your prescriptions filled with confidence.{' '}
-                        <span className="font-bold">Visit our pharmacy </span>today to discover our wide range of
-                        affordable medications.
+                        We do the heavy lifting so our care provider partners don't have to.{' '}
+                        <span className="font-bold">Contact us </span>today to discover how we can 
+                        streamline your pharmacy operations while you focus on delivering great patient care.
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -184,12 +191,12 @@ export default function Home() {
             <Dialog>
               <DialogTrigger asChild>
                 <div className="aspect-h-[110] aspect-w-[343] cursor-pointer overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                  <Image src={LabServices} alt="" fill className="object-cover" />
+                  <Image src={Staffing} alt="" fill className="object-cover" />
                   <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                     <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                      Laboratory & Diagnostic <span className="font-normal">Services</span>
+                      Staffing <span className="font-normal"></span>
                     </p>
                   </div>
                 </div>
@@ -198,21 +205,20 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={LabServices} alt="" fill className="object-cover" />
+                      <Image src={Staffing} alt="" fill className="object-cover" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Laboratory & Diagnostic <span className="font-normal">Services</span>
+                      Pharmacy staffing <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      From routine blood tests to imaging services, we provide everything you need under one roof. Our
-                      commitment to excellence extends beyond the accuracy of our tests. We prioritize efficiency, and
-                      affordability, making healthcare accessible to everyone with quick turnaround times. <br />
+                      Our frontline heroes that serve our patients are everything to us, and we ensure our pharmacies are manned by the best.
+                      We manage staffing across the whole cycle from recruitment & training, to shift and performance management. <br />
                       <br />
                       <span className="italic">
-                        Stay proactive about your health. <span className="font-bold">Visit our facilities</span> today
-                        for accurate diagnostic results and peace of mind.
+                        Experience great customer service. <span className="font-bold">Visit our facilities</span> today
+                        for a taste of professional service.
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -223,12 +229,12 @@ export default function Home() {
             <Dialog>
               <DialogTrigger asChild>
                 <div className="aspect-h-[110] aspect-w-[343] cursor-pointer overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                  <Image src={Maternal} alt="" fill className="object-cover" />
+                  <Image src={Compliance} alt="" fill className="object-cover" />
                   <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                     <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                      Maternal <span className="font-normal">Services</span>
+                      Regulatory Compliance <span className="font-normal"></span>
                     </p>
                   </div>
                 </div>
@@ -237,24 +243,22 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={Maternal} alt="" fill className="object-cover" />
+                      <Image src={Compliance} alt="" fill className="object-cover" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Maternal <span className="font-normal">Services</span>
+                      Regulatory Compliance <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      Our dedicated team of healthcare professionals ensures the well-being of both mother and child
-                      with personalized services tailored to each stage of pregnancy and beyond. <br /> From check-ups,
-                      ultrasounds and maternity services to specialized treatments, we prioritize the health and safety
-                      of expectant mothers and newborns. <br /> Trust us to provide the support and guidance you need
-                      for a healthy pregnancy journey. <br />
+                      All our pharmacies are licensed by relevant bodies and are staffed with qualified personnel. <br /> From PPB licensing to ongoing audits, we ensure full compliance and good dispensing practices 
+                      are always observed.
+                     <br />
                       <br />
                       <span className="italic">
-                        <span className="font-bold">Start your journey to motherhood with us.</span> Book your maternal
-                        services appointment now on <span className="font-bold">0742013541</span> to receive
-                        personalized care every step of the way.
+                        Want the piece of mind of knowing every prescription dispensed is right? Reach out today. Let us make your pharmacy a centre of excellence.{' '}
+                        <span className="font-bold">Contact us</span> on{' '}
+                        <span className="font-bold">0719 807 978</span> to talk to our representantive.
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -265,12 +269,12 @@ export default function Home() {
             <Dialog>
               <DialogTrigger asChild>
                 <div className="aspect-h-[110] aspect-w-[343] cursor-pointer overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                  <Image src={SpecialistServices} alt="" fill className="object-cover" />
+                  <Image src={HMIS} alt="" fill className="object-cover" />
                   <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                     <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                      Specialist <span className="font-normal">Services</span>
+                      HMIS <span className="font-normal"></span>
                     </p>
                   </div>
                 </div>
@@ -279,21 +283,21 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={SpecialistServices} alt="" fill className="object-cover" />
+                      <Image src={HMIS} alt="" fill className="object-cover" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Specialist <span className="font-normal">Services</span>
+                      HMIS <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      We offer specialized services including dental, paediatric and gynaecology. Convenient
-                      appointments can be booked for these expert consultations. <br />
+                      We onboard the clinic to our Health Management Information System software free of charge to keep
+                      neat patient histories and manage all clinic operations. <br />
                       <br />{' '}
                       <span className="italic">
-                        Address your specific healthcare needs with our specialists.{' '}
-                        <span className="font-bold">Book your appointment now</span> on{' '}
-                        <span className="font-bold">0742013541</span> for expert care tailored to you.
+                        Inject efficiency into your clinic's operations with our HMIS system.{' '}
+                        <span className="font-bold">Reach out to us</span> on{' '}
+                        <span className="font-bold">0719 807 978</span> to speak with our representantive.
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -304,12 +308,12 @@ export default function Home() {
             <Dialog>
               <DialogTrigger asChild>
                 <div className="aspect-h-[110] aspect-w-[343] cursor-pointer overflow-hidden rounded-lg sm:aspect-h-[335] sm:aspect-w-[662]">
-                  <Image src={EyeCare} alt="" fill className="object-cover" />
+                  <Image src={BrandMarketing} alt="" fill className="object-cover" />
                   <div className="bg-[linear-gradient(11deg,_rgba(17,_24,_39,_0.80)_8.85%,_rgba(3,_48,_81,_0.00)_99.44%)]" />
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                     <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                      Eye Care <span className="font-normal">Services</span>
+                      Brand Marketing <span className="font-normal"></span>
                     </p>
                   </div>
                 </div>
@@ -318,22 +322,21 @@ export default function Home() {
                 <div className="items-center sm:flex">
                   <div className="flex-1">
                     <div className="aspect-h-9 aspect-w-16 bg-gray-300 sm:aspect-h-1 sm:aspect-w-1">
-                      <Image src={EyeCare} alt="" fill className="object-cover" />
+                      <Image src={BrandMarketing} alt="" fill className="object-cover" />
                     </div>
                   </div>
                   <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Eye Care <span className="font-normal">Services</span>
+                      Brand Marketing <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
-                      We provide top-quality, affordable eye care, from glasses to medication. <br /> This expands our
-                      holistic healthcare offerings and allows companies to invest in employee health, boosting overall
-                      well-being and productivity. <br />
+                      We market our network through various online and offline channels. <br /> As part of the AfyaNzima network, you benefit from
+                      all the visibility and brand awareness we create.
+                      <br />
                       <br />
                       <span className="italic">
-                        See the world clearly again. <span className="font-bold">Schedule your appointment</span> at our
-                        clinics today on <span className="font-bold">0742013541</span> for affordable solutions to
-                        improve your vision and eye health.
+                        Join the network. <span className="font-bold">Talk to us </span>
+                        today on <span className="font-bold">0719 807 978</span> .
                       </span>
                     </p>
                     <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
@@ -347,7 +350,7 @@ export default function Home() {
           </div>
         </div>
       </section>
-      <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16">
+      <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16" id="pharmacies">
         <div className="mx-auto max-w-screen-2xl space-y-12">
           <div className="space-y-8 text-center font-bold text-[#066DB7]">
             <h2 className="text-5xl tracking-[-0.06em]">AfyaNzima Pharmacies</h2>
@@ -425,64 +428,9 @@ export default function Home() {
               In this model, we operate your clinic pharmacy for you, giving you peace of mind as you focus on the
               management and clinical care provided in the rest of your facility. 
             </p>
-            <p>We ensure:</p>
-            <ul className="list-disc pl-6">
-              <li>
-                The clinic pharmacy is fully stocked with quality pharmaceuticals at all times, ensuring your clinic can
-                always provide patients with the necessary treatment and no sales are lost due to stockouts
-              </li>
-              <li>
-                The clinic pharmacy is fully licensed and staffed with qualified personnel at all times to help grow the
-                clinic and deliver the best possible quality of care, without the need to worry about recruitment,
-                training and regulatory compliance
-              </li>
-              <li>
-                All up-front investments are made by us, meaning you do not need to invest in stocking the pharmacy and
-                can use these savings for the rest of the facility
-              </li>
-              <li>
-                We take care of all administration, including detailed financial reporting and ensuring that no
-                medication is out of date
-              </li>
-              <li>
-                We onboard the clinic to our Health Management Information System software free of charge; this is used
-                for automated pharmacy inventory & patient management as well as billing with automatic M-PESA payment
-                reconciliation
-              </li>
-            </ul>
-            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-4">
               <p className="font-bold tracking-[-0.02em]">Reach out to us</p>
               <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-lg/5 text-white group-hover:bg-white group-hover:text-[#066DB7]">
-                <ArrowRightIcon className="size-4" />
-              </div>
-            </div>
-          </a>
-          <a
-            className="group block space-y-6 rounded-2xl bg-white p-8 text-[#066DB7] shadow-[-2px_4px_16px_0px_rgba(0,_0,_0,_0.05)] hover:bg-[#066DB7] hover:text-white sm:text-lg/[auto]"
-            href="https://forms.gle/BdG57rrBpMAgxgB8A"
-            target="_blank"
-            rel="noopener"
-          >
-            <h3 className="text-2xl font-bold tracking-[-0.02em] sm:text-[2rem]/none">Partner (franchise) clinics</h3>
-            <p>
-              In this model, we broaden our support to the clinic beyond pharmacy as a service to encompass other
-              elements of the facility to transform your clinic into a centre of excellence by:
-            </p>
-            <ul className="list-disc pl-6">
-              <li>Supporting staff management and training</li>
-              <li>Implementation of our HMIS software</li>
-              <li>Ongoing clinic quality assurance: staff training on clinical standards</li>
-              <li>Investment in the facility infrastructure and appearance</li>
-              <li>
-                Clinic equipment including computers, tablets and laboratory diagnostic equipment (e.g., haematology
-                analyzer, biochemistry, portable ultrasound, rapid tests, etc.)
-              </li>
-              <li>Organization of ongoing medical camps such as eyecare or maternity clinics</li>
-              <li>AfyaNzima&apos;s corporate identity and branding</li>
-            </ul>
-            <div className="flex items-center space-x-4">
-              <p className="font-bold tracking-[-0.02em]">Reach out to us</p>
-              <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-white group-hover:bg-white group-hover:text-[#066DB7]">
                 <ArrowRightIcon className="size-4" />
               </div>
             </div>
