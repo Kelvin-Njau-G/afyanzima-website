@@ -21,6 +21,8 @@ import EyeCare from '@/images/eye-care.png';
 import FooterLogo from '@/images/footer_logo.png';
 import LabServices from '@/images/Lab-services.jpg';
 import SpecialistServices from '@/images/specialist-services.png';
+import HellenTestimonial from '@/images/hellen-testimonial.jpeg';
+import MaryTestimonial from '@/images/mary-testimonial.jpeg';
 
 import { facilities, pharmacies } from './data';
 
@@ -36,7 +38,7 @@ export default function Home() {
                 <div className="h-[0.3125rem] w-[5.6875rem] bg-[#066DB7]" />
               </div>
               <h1 className="text-3xl font-semibold text-[#E63524]">
-                AfyaNzima partners with primary care clinics to manage on-site pharmacies, ensuring every patient leaves with their full prescription in hand.
+                AfyaNzima partners with primary healthcare clinics to manage on-site pharmacies, ensuring every patient leaves with their full prescription in hand.
               </h1>
               {/* --- UPDATED SECTION STARTS HERE --- */}
               <div className="grid grid-cols-1 gap-10 sm:grid-cols-2">
@@ -47,7 +49,7 @@ export default function Home() {
                   </h2>
                   <p className="text-xl text-[#111827]">You can expect:</p>
                   <ul className="list-disc space-y-2 pl-6 text-xl text-[#111827]">
-                    <li>Fully-stocked pharmacy</li>
+                    <li>A fully stocked pharmacy</li>
                     <li>Professional and qualified staff</li>
                     <li>Affordable prices</li>
                   </ul>
@@ -72,7 +74,7 @@ export default function Home() {
                   </h2>
                   <p className="text-xl text-[#111827]">You can expect:</p>
                   <ul className="list-disc space-y-2 pl-6 text-xl text-[#111827]">
-                    <li>End-to-end management</li>
+                    <li>End-to-end management support</li>
                     <li>Free complimentary HMIS system</li>
                     <li>Higher earnings</li>
                   </ul>
@@ -156,7 +158,7 @@ export default function Home() {
                     <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                       <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                       <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                        Operations management <span className="font-normal"></span>
+                        Operations Management <span className="font-normal"></span>
                       </p>
                     </div>
                   </div>
@@ -409,7 +411,40 @@ export default function Home() {
       </section>
       
       <Maps />
-      
+      <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16">
+        <div className="mx-auto max-w-screen-2xl space-y-12">
+          <div className="text-center text-[#066DB7] space-y-6">
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-[-0.02em]">
+              Curious about what it&apos;s like partnering with us? <br className="hidden sm:block" />
+              Hear from our partners.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 sm:gap-12">
+            {/* Left column - Hellen */}
+            <div className="flex flex-col space-y-6 rounded-2xl bg-white p-6 text-[#111827] shadow-[0px_4px_4px_rgba(0,0,0,0.1)]">
+              <div className="aspect-h-[350] aspect-w-[350] overflow-hidden rounded-2xl">
+                <Image src={HellenTestimonial} alt="Hellen testimonial" fill className="object-cover" />
+              </div>
+              <p className="text-lg italic">
+                “I am happy that we have never run out of stock. Our drug preferences have been honored,
+                no stock-outs have been experienced, and the terms of the contract have been upheld.”
+              </p>
+              <p className="text-[#066DB7] font-bold text-lg">Director, Well Living Medical Clinic</p>
+            </div>
+            {/* Right column - Mary */}
+            <div className="flex flex-col space-y-6 rounded-2xl bg-white p-6 text-[#111827] shadow-[0px_4px_4px_rgba(0,0,0,0.1)]">
+              <div className="aspect-h-[350] aspect-w-[350] overflow-hidden rounded-2xl">
+                <Image src={MaryTestimonial} alt="Mary testimonial" fill className="object-cover" />
+              </div>
+              <p className="text-lg italic">
+                “Pharmacy as a service has relieved me of the hustle of finding staffing for the pharmacy,
+                procuring drugs and managing the inventory. I would recommend it to my fellow clinic owners.”
+              </p>
+              <p className="text-[#066DB7] font-bold text-lg">Director, Nimoli Medical Services</p>
+            </div>
+          </div>
+        </div>
+      </section>
       <section className="bg-[#F6F8FF] px-4 py-16 sm:px-[4.5rem]" id="providers">
         <div className="mx-auto max-w-screen-2xl space-y-12">
           <div className="space-y-6 text-[#066DB7]">
@@ -425,11 +460,10 @@ export default function Home() {
           >
             <h3 className="text-2xl font-bold tracking-[-0.02em] sm:text-[2rem]/none">Pharmacy as a Service</h3>
             <p>
-              In this model, we operate your clinic pharmacy for you, giving you peace of mind as you focus on the
-              management and clinical care provided in the rest of your facility. 
+              Want an exemplary pharmacy but without the hassle of running it? Join our network of partners and elevate your clinic's level of care.
             </p>
               <div className="flex items-center space-x-4">
-              <p className="font-bold tracking-[-0.02em]">Reach out to us</p>
+              <p className="font-bold tracking-[-0.02em]">Reach out to us by clicking here</p>
               <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-lg/5 text-white group-hover:bg-white group-hover:text-[#066DB7]">
                 <ArrowRightIcon className="size-4" />
               </div>

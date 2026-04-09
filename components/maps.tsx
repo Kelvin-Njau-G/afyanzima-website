@@ -6,55 +6,22 @@ import { AdvancedMarker, APIProvider, InfoWindow, Map, Pin, useAdvancedMarkerRef
 type Poi = { key: string; location: google.maps.LatLngLiteral; title: string };
 
 const pois: Poi[] = [
-  { key: 'aurora', location: { lat: -1.3626012775627543, lng: 36.6567066 }, title: 'Aurora Healthcare Limited' },
-  { key: 'zackii', location: { lat: -1.25491184849562, lng: 36.722192771164494 }, title: 'Zackii Medical Centre' },
-  { key: 'provide', location: { lat: -1.2503942955470304, lng: 36.8741823711645 }, title: 'Provide Medical Centre' },
-  {
-    key: 'precious',
-    location: { lat: -1.26610244946374, lng: 36.98837741534201 },
-    title: 'Precious Life Medical Centre',
-  },
-  {
-    key: 'malaika',
-    location: { lat: -1.2837067510041174, lng: 36.7529 },
-    title: 'Malaika Healthcare Limited',
-  },
+  
   {
     key: 'wellLiving',
     location: { lat: -1.2638497181444144, lng: 36.926983666913614 },
     title: 'Well Living Medical Clinic',
   },
-  { key: 'nimoli', location: { lat: -1.229291893580319, lng: 36.920567542328996 }, title: 'Nimoli Medical Services' },
-  {
-    key: 'zackiiMuthua',
-    location: { lat: -1.2685477020873601, lng: 36.71829247116448 },
-    title: 'Zackii Medical Clinic, Muthua',
+  { key: 'nimoli', 
+    location: { lat: -1.229291893580319, lng: 36.920567542328996 }, 
+    title: 'Nimoli Medical Services' 
   },
   {
-    key: 'keyLife',
-    location: { lat: 0.07184902558, lng: 37.68580681 },
-    title: 'Key Life Medical Centre',
+    key: 'citystar',
+    location: { lat: -1.3157726525231392, lng: 36.827335722466515 },
+    title: 'City Star Hospital',
   },
-  {
-    key: 'sanel',
-    location: { lat: -1.409304081, lng: 36.94911363 },
-    title: 'Sanel Hospital Limited',
-  },
-  {
-    key: 'tendercare',
-    location: { lat: -1.325297425, lng: 36.88072075 },
-    title: 'Tendercare Hospital Limited',
-  },
-  {
-    key: 'oliveSinai',
-    location: { lat: -1.398121895, lng: 36.76469108 },
-    title: 'Mt. Olive Sinai Hospital',
-  },
-  {
-    key: 'azrah',
-    location: { lat: -1.277159666, lng: 36.85159237 },
-    title: 'Azrah Medical Centre',
-  },
+  
 ];
 
 function PoiMarker({ poi }: { poi: Poi }) {
@@ -145,7 +112,7 @@ function PoiMarker({ poi }: { poi: Poi }) {
 
 export default function Maps() {
   return (
-    <APIProvider apiKey="AIzaSyD8cfp--YBN0f_TgeYg75Fo2ujb51Nnn7A">
+    <APIProvider apiKey="AIzaSyBXAlLJvUaeq1PlaDVI5Yr_VP1WNimeh60">
       <div className="h-96">
         <Map
           defaultZoom={11}
