@@ -50,10 +50,7 @@ export default function Nav() {
               </Link>
               <Link href="#patients" onClick={() => setIsOpen(false)}>
                 For Providers
-              </Link>
-              <a href="https://www.ilarahealth.com/" target="_blank" rel="noopener">
-                Ilara Health
-              </a>
+              </Link>    
             </div>
           </nav>
         </div>

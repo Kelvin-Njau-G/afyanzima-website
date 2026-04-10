@@ -493,7 +493,7 @@ export default function Home() {
              
               <li className="flex items-center space-x-2">
                 <EnvelopeIcon className="size-4" />
-                <a href="mailto:afyanzima@ilarahealth.com" className="underline">
+                <a href="mailto:growth@tembelea.health" className="underline">
                   growth@tembelea.health
                 </a>
               </li>
