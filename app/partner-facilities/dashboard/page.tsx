@@ -19,6 +19,14 @@ type OverviewData = {
   network: {
     totalGross: number; totalNet: number; totalDiscount: number;
     totalProfit: number; totalProjected: number; avgMargin: number; daysInMonth: number;
+    totalInventoryValue: number; totalRestockValue: number;
+  };
+  commercial: {
+    topProducts: Array<{ product: string; sku: string; qty: number; revenue: number; margin: number }>;
+  };
+  inventory: {
+    inventoryByFacility: Record<string, number>;
+    restockByFacility: Record<string, number>;
   };
 };
 
@@ -165,13 +173,17 @@ export default function OverviewDashboard() {
           </span>
         </div>
 
-        {/* Network KPIs */}
+        {/* ── COMMERCIAL ──────────────────────────────────── */}
+        <div className="mb-4 mt-2 border-b border-gray-200 pb-2">
+          <h2 className="text-sm font-medium text-gray-700">Commercial</h2>
+        </div>
+
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Network month-to-date</p>
         <div className="mb-6 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {[
-            { label: 'Total gross revenue', value: fmt(n.totalGross), sub: 'KSh across all facilities' },
-            { label: 'Total net revenue', value: fmt(n.totalNet), sub: `KSh after KSh ${fmt(n.totalDiscount)} discounts` },
-            { label: 'Total gross profit', value: fmt(n.totalProfit), sub: `${n.avgMargin}% avg margin`, accent: true },
+            { label: 'Total gross revenue',    value: fmt(n.totalGross),    sub: 'KSh across all facilities' },
+            { label: 'Total net revenue',      value: fmt(n.totalNet),      sub: `KSh after KSh ${fmt(n.totalDiscount)} discounts` },
+            { label: 'Total gross profit',     value: fmt(n.totalProfit),   sub: `${n.avgMargin}% avg margin`, accent: true },
             { label: 'Projected network revenue', value: fmt(n.totalProjected), sub: `KSh · avg × ${n.daysInMonth} days`, accent: true },
           ].map((card) => (
             <div key={card.label} className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}>
@@ -182,10 +194,87 @@ export default function OverviewDashboard() {
           ))}
         </div>
 
+        {/* Top 20 products — network */}
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Top 20 products this month — all facilities</p>
+        <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                <th className="px-4 py-3">#</th>
+                <th className="px-4 py-3">Product</th>
+                <th className="px-4 py-3 text-right">Units sold</th>
+                <th className="px-4 py-3 text-right">Revenue (KSh)</th>
+                <th className="px-4 py-3 text-right">Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.commercial.topProducts.map((p, i) => (
+                <tr key={p.sku} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2">
+                    <p className="font-medium text-gray-800">{p.product}</p>
+                    <p className="text-[11px] text-gray-400">{p.sku}</p>
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
+                  <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
+                  <td className="px-4 py-2 text-right">
+                    <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
+                      {p.margin}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── INVENTORY ──────────────────────────────────── */}
+        <div className="mb-4 mt-8 border-b border-gray-200 pb-2">
+          <h2 className="text-sm font-medium text-gray-700">Inventory</h2>
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="rounded-lg bg-gray-100 p-3.5">
+            <p className="mb-1 text-[11px] text-gray-500">Total network inventory value</p>
+            <p className="text-xl font-medium text-gray-900">{fmt(n.totalInventoryValue)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
+          </div>
+          <div className="rounded-lg bg-gray-100 p-3.5 border-l-[3px] border-green-600">
+            <p className="mb-1 text-[11px] text-gray-500">Total monthly restock value</p>
+            <p className="text-xl font-medium text-green-700">{fmt(n.totalRestockValue)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
+          </div>
+        </div>
+
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Inventory & restock per facility</p>
+        <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                <th className="px-4 py-3">Facility</th>
+                <th className="px-4 py-3 text-right">Inventory value (KSh)</th>
+                <th className="px-4 py-3 text-right">Monthly restock (KSh)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allFacilities.map((fac, i) => (
+                <tr key={fac} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-2.5 font-medium text-gray-800">
+                    <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
+                    {fac}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-700">{fmt(data.inventory.inventoryByFacility[fac] ?? 0)}</td>
+                  <td className="px-4 py-2.5 text-right text-gray-700">{fmt(data.inventory.restockByFacility[fac] ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         <hr className="my-6 border-gray-200" />
 
-        {/* Per-facility table */}
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Per-facility summary</p>
+        {/* ── COMMERCIAL cont. — per-facility summary ─── */}
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Per-facility commercial summary</p>
         <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
           <table className="w-full text-sm">
             <thead>

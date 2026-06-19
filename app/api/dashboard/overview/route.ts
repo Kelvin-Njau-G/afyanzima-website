@@ -40,17 +40,46 @@ export async function POST(req: NextRequest) {
 
   const today = new Date();
   const monthPrefix = today.toISOString().slice(0, 7);
-  const monthLabel = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  const todayStr = today.toISOString().slice(0, 10);
+  const monthLabel  = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const todayStr    = today.toISOString().slice(0, 10);
+  const monthStart  = `${monthPrefix}-01`;
+  const nextMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const monthEnd    = nextMonth.toISOString().slice(0, 10);
 
   const auth = (await mbFetch('/api/session', { username: MB_USER, password: MB_PASS })) as { id: string };
   const token = auth.id;
 
-  const [dailyRes, discRes, marginRes] = await Promise.all([
+  const topProductsQuery = {
+    database: 5, type: 'query',
+    query: {
+      'source-table': 'card__1788',
+      filter: ['and',
+        ['=',  ['field', 'Department', { 'base-type': 'type/Text' }], 'Pharmacy'],
+        ['>=', ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'minute' }], `${monthStart}T00:00:00`],
+        ['<',  ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'minute' }], `${monthEnd}T00:00:00`],
+      ],
+      aggregation: [
+        ['sum', ['field', 'Quantity',    { 'base-type': 'type/Float' }]],
+        ['sum', ['field', 'Sale_Amount', { 'base-type': 'type/Float' }]],
+        ['sum', ['field', 'Profit',      { 'base-type': 'type/Float' }]],
+      ],
+      breakout: [
+        ['field', 'Product', { 'base-type': 'type/Text' }],
+        ['field', 'SKU',     { 'base-type': 'type/Text' }],
+      ],
+      'order-by': [['desc', ['aggregation', 1]]],
+      limit: 20,
+    },
+  };
+
+  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes] = await Promise.all([
     mbFetch('/api/card/2262/query', {}, token),
     mbFetch('/api/card/2536/query', {}, token),
     mbFetch('/api/card/2410/query', {}, token),
-  ]) as [{ data: { rows: unknown[][] } }, { data: { rows: unknown[][] } }, { data: { rows: unknown[][] } }];
+    mbFetch('/api/dataset', topProductsQuery, token),
+    mbFetch('/api/card/2507/query', {}, token),
+    mbFetch('/api/card/1661/query', {}, token),
+  ]) as Array<{ data: { rows: unknown[][] } }>;
 
   // Daily revenue per facility
   const monthRows = dailyRes.data.rows.filter(
@@ -120,6 +149,33 @@ export async function POST(req: NextRequest) {
     dataset[fac] = dates.map((d) => byDate[d]?.[fac] ?? 0);
   }
 
+  // Top 20 products across network
+  const topProducts = topProdRes.data.rows.map(row => ({
+    product: row[0] as string,
+    sku:     row[1] as string,
+    qty:     Math.round((row[2] as number) || 0),
+    revenue: Math.round((row[3] as number) || 0),
+    margin:  (row[3] as number) > 0 ? Math.round(((row[4] as number) / (row[3] as number)) * 1000) / 10 : 0,
+  }));
+
+  // Inventory value per facility (card 2507: org, class, value)
+  const inventoryByFacility: Record<string, number> = {};
+  for (const row of invByClassRes.data.rows) {
+    const fac = row[0] as string;
+    inventoryByFacility[fac] = (inventoryByFacility[fac] ?? 0) + ((row[2] as number) || 0);
+  }
+  const totalInventoryValue = Math.round(Object.values(inventoryByFacility).reduce((s, v) => s + v, 0));
+
+  // Monthly restock per facility (card 1661)
+  const restockByFacility: Record<string, number> = {};
+  for (const row of restockRes.data.rows) {
+    if (typeof row[1] === 'string' && row[1].startsWith(monthPrefix)) {
+      const fac = row[0] as string;
+      restockByFacility[fac] = (restockByFacility[fac] ?? 0) + ((row[6] as number) || 0);
+    }
+  }
+  const totalRestockValue = Math.round(Object.values(restockByFacility).reduce((s, v) => s + v, 0));
+
   return NextResponse.json({
     monthLabel,
     generatedAt: new Date().toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }),
@@ -129,6 +185,8 @@ export async function POST(req: NextRequest) {
     margins,
     dataset,
     facilitySummary,
-    network: { totalGross, totalNet, totalDiscount, totalProfit, totalProjected, avgMargin, daysInMonth },
+    network: { totalGross, totalNet, totalDiscount, totalProfit, totalProjected, avgMargin, daysInMonth, totalInventoryValue, totalRestockValue },
+    commercial: { topProducts },
+    inventory: { inventoryByFacility: Object.fromEntries(Object.entries(inventoryByFacility).map(([k,v]) => [k, Math.round(v)])), restockByFacility: Object.fromEntries(Object.entries(restockByFacility).map(([k,v]) => [k, Math.round(v)])) },
   });
 }

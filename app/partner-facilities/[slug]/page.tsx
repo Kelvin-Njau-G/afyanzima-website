@@ -11,29 +11,39 @@ type DashboardData = {
   dates: string[];
   dateLabels: string[];
   metrics: {
-    gross: number;
-    net: number;
-    discountAmt: number;
-    discountPct: number;
-    marginPct: number;
-    netMarginPct: number;
-    grossProfit: number;
-    avgDaily: number;
-    projected: number;
-    daysInMonth: number;
+    gross: number; net: number; discountAmt: number; discountPct: number;
+    marginPct: number; netMarginPct: number; grossProfit: number;
+    avgDaily: number; projected: number; daysInMonth: number;
     daily: DailyEntry[];
   };
+  commercial: {
+    topProducts: Array<{ product: string; sku: string; qty: number; revenue: number; margin: number }>;
+  };
+  inventory: { inventoryValue: number; monthlyRestockValue: number };
+  fullProductTable: Array<{
+    product: string; sku: string; buyingPrice: number | null;
+    sellingPrice: number | null; margin: number; revenue: number; qty: number;
+  }>;
 };
 
-const fmt = (n: number) => Math.round(n).toLocaleString();
+const fmt  = (n: number) => Math.round(n).toLocaleString();
+const fmtD = (n: number | null) => n != null ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="mb-4 mt-8 border-b border-gray-200 pb-2">
+      <h2 className="text-sm font-medium text-gray-700">{title}</h2>
+    </div>
+  );
+}
 
 export default function PartnerDashboard({ params }: { params: { slug: string } }) {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [password, setPassword]   = useState('');
+  const [error, setError]         = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [data, setData]           = useState<DashboardData | null>(null);
 
-  const dailyRef = useRef<HTMLCanvasElement>(null);
+  const dailyRef     = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
 
   async function login(e: React.FormEvent) {
@@ -46,10 +56,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
-      if (res.status === 401) {
-        setError('Incorrect password. Please try again.');
-        return;
-      }
+      if (res.status === 401) { setError('Incorrect password. Please try again.'); return; }
       if (!res.ok) throw new Error('Server error');
       setData(await res.json());
     } catch {
@@ -61,59 +68,40 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
 
   useEffect(() => {
     if (!data) return;
-
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-    script.onload = () => renderCharts(data);
+    script.onload = () => renderChart(data);
     document.head.appendChild(script);
-    return () => {
-      document.head.removeChild(script);
-    };
+    return () => { document.head.removeChild(script); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  function renderCharts(d: DashboardData) {
+  function renderChart(d: DashboardData) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Chart = (window as any).Chart;
     if (!Chart || !dailyRef.current) return;
-
     if (dailyChartRef.current) (dailyChartRef.current as { destroy(): void }).destroy();
-
-    const today = new Date().toISOString().slice(0, 10);
-    const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark    = matchMedia('(prefers-color-scheme: dark)').matches;
     const textColor = isDark ? '#b4b2a9' : '#888780';
     const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-
+    const today     = new Date().toISOString().slice(0, 10);
     dailyChartRef.current = new Chart(dailyRef.current, {
       data: {
-        labels: d.metrics.daily.map((e) => e.label),
+        labels: d.metrics.daily.map(e => e.label),
         datasets: [
           {
-            type: 'bar',
-            label: 'Sales',
-            data: d.metrics.daily.map((e) => e.revenue),
-            backgroundColor: d.dates.map((date) =>
-              date >= today ? (isDark ? '#5dcaa5' : '#9fe1cb') : '#1d9e75',
-            ),
-            borderRadius: 4,
-            order: 2,
+            type: 'bar', label: 'Sales', data: d.metrics.daily.map(e => e.revenue),
+            backgroundColor: d.dates.map(date => date >= today ? (isDark ? '#5dcaa5' : '#9fe1cb') : '#1d9e75'),
+            borderRadius: 4, order: 2,
           },
           {
-            type: 'line',
-            label: 'Average',
-            data: Array(d.metrics.daily.length).fill(d.metrics.avgDaily),
-            borderColor: '#ba7517',
-            borderDash: [5, 4],
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0,
-            order: 1,
+            type: 'line', label: 'Average', data: Array(d.metrics.daily.length).fill(d.metrics.avgDaily),
+            borderColor: '#ba7517', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0, order: 1,
           },
         ],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { label: (c: { parsed: { y: number } }) => ` KSh ${fmt(c.parsed.y)}` } },
@@ -137,20 +125,13 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </div>
           <form onSubmit={login} className="space-y-3">
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              autoComplete="current-password"
-              required
+              type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="Password" autoComplete="current-password" required
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-1 focus:ring-green-600"
             />
             {error && <p className="text-xs text-red-600">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-green-700 py-2.5 text-sm font-medium text-white transition hover:bg-green-800 disabled:opacity-60"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full rounded-lg bg-green-700 py-2.5 text-sm font-medium text-white transition hover:bg-green-800 disabled:opacity-60">
               {loading ? 'Loading…' : 'View dashboard'}
             </button>
           </form>
@@ -176,27 +157,25 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </span>
         </div>
 
-        {/* KPI grid */}
+        {/* ── COMMERCIAL ──────────────────────────────────────── */}
+        <SectionHeader title="Commercial" />
+
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Month-to-date summary</p>
         <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           {[
-            { label: 'Gross revenue', value: fmt(m.gross), sub: 'KSh · before discounts' },
-            { label: 'Net revenue', value: fmt(m.net), sub: 'KSh · after discounts' },
-            { label: 'Discounts given', value: fmt(m.discountAmt), sub: `KSh · ${m.discountPct}% of gross` },
-            { label: 'Gross margin %', value: `${m.marginPct}%`, sub: `Net margin ${m.netMarginPct}%` },
+            { label: 'Gross revenue',     value: fmt(m.gross),       sub: 'KSh · before discounts' },
+            { label: 'Net revenue',       value: fmt(m.net),         sub: 'KSh · after discounts' },
+            { label: 'Discounts given',   value: fmt(m.discountAmt), sub: `KSh · ${m.discountPct}% of gross` },
+            { label: 'Gross margin %',    value: `${m.marginPct}%`,  sub: `Net margin ${m.netMarginPct}%` },
             { label: 'Gross margin (KSh)', value: fmt(m.grossProfit), sub: `Gross rev × ${m.marginPct}%`, accent: true },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}
-            >
+          ].map(card => (
+            <div key={card.label} className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}>
               <p className="mb-1 text-[11px] text-gray-500">{card.label}</p>
               <p className={`text-xl font-medium ${card.accent ? 'text-green-700' : 'text-gray-900'}`}>{card.value}</p>
               <p className="mt-0.5 text-[11px] text-gray-400">{card.sub}</p>
             </div>
           ))}
         </div>
-
         <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <div className="rounded-lg bg-gray-100 p-3.5">
             <p className="mb-1 text-[11px] text-gray-500">Avg daily sales</p>
@@ -210,46 +189,133 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </div>
         </div>
 
-        <hr className="my-6 border-gray-200" />
-
-        {/* Daily chart */}
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales — {data.monthLabel}</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
           <div className="relative h-56 w-full">
             <canvas ref={dailyRef} role="img" aria-label="Bar chart of daily pharmacy sales this month." />
           </div>
           <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-400">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" />
-              Daily sales (KSh)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3.5 border-t-2 border-dashed border-amber-600" />
-              Daily avg
-            </span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" />Daily sales (KSh)</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 border-t-2 border-dashed border-amber-600" />&nbsp;Daily avg</span>
             <span className="ml-auto">* today is partial</span>
           </div>
         </div>
 
-        {/* Breakdown table */}
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Revenue breakdown</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
           {[
-            { label: 'Gross revenue (MTD)', value: `KSh ${fmt(m.gross)}`, cls: '' },
-            { label: 'Less: discounts', value: `− KSh ${fmt(m.discountAmt)}`, cls: 'text-red-600' },
-            { label: 'Net revenue (MTD)', value: `KSh ${fmt(m.net)}`, cls: '', bold: true },
+            { label: 'Gross revenue (MTD)',              value: `KSh ${fmt(m.gross)}`,              cls: '' },
+            { label: 'Less: discounts',                  value: `− KSh ${fmt(m.discountAmt)}`,       cls: 'text-red-600' },
+            { label: 'Net revenue (MTD)',                value: `KSh ${fmt(m.net)}`,                cls: '', bold: true },
             { label: `Est. COGS (${100 - m.marginPct}% of gross)`, value: `− KSh ${fmt(m.gross - m.grossProfit)}`, cls: 'text-red-600' },
-            { label: 'Gross profit (MTD)', value: `KSh ${fmt(m.grossProfit)}`, cls: 'text-green-700', bold: true },
+            { label: 'Gross profit (MTD)',               value: `KSh ${fmt(m.grossProfit)}`,        cls: 'text-green-700', bold: true },
           ].map((row, i, arr) => (
-            <div
-              key={row.label}
-              className={`flex justify-between py-1.5 text-sm ${i < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
-            >
+            <div key={row.label} className={`flex justify-between py-1.5 text-sm ${i < arr.length - 1 ? 'border-b border-gray-100' : ''}`}>
               <span className="text-gray-500">{row.label}</span>
               <span className={`font-medium ${row.cls}`}>{row.value}</span>
             </div>
           ))}
         </div>
+
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Top 20 products this month</p>
+        <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                <th className="px-4 py-3">#</th>
+                <th className="px-4 py-3">Product</th>
+                <th className="px-4 py-3 text-right">Units sold</th>
+                <th className="px-4 py-3 text-right">Revenue (KSh)</th>
+                <th className="px-4 py-3 text-right">Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.commercial.topProducts.map((p, i) => (
+                <tr key={p.sku} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2">
+                    <p className="font-medium text-gray-800">{p.product}</p>
+                    <p className="text-[11px] text-gray-400">{p.sku}</p>
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
+                  <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
+                  <td className="px-4 py-2 text-right">
+                    <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
+                      {p.margin}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── INVENTORY ──────────────────────────────────────── */}
+        <SectionHeader title="Inventory" />
+
+        <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="rounded-lg bg-gray-100 p-3.5">
+            <p className="mb-1 text-[11px] text-gray-500">Total inventory value</p>
+            <p className="text-xl font-medium text-gray-900">{fmt(data.inventory.inventoryValue)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
+          </div>
+          <div className="rounded-lg bg-gray-100 p-3.5 border-l-[3px] border-green-600">
+            <p className="mb-1 text-[11px] text-gray-500">Monthly restock value</p>
+            <p className="text-xl font-medium text-green-700">{fmt(data.inventory.monthlyRestockValue)}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
+          </div>
+        </div>
+
+        {/* ── PRODUCT CATALOGUE (Qaalane only) ─────────────── */}
+        {data.fullProductTable.length > 0 && (
+          <>
+            <SectionHeader title="Product catalogue" />
+            <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
+              All products sold this month ({data.fullProductTable.length} SKUs)
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+              <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: '680px' }}>
+                <colgroup>
+                  <col style={{ width: '36%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '16%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                    <th className="px-4 py-3">Product</th>
+                    <th className="px-4 py-3 text-right">Units sold</th>
+                    <th className="px-4 py-3 text-right">Buying price</th>
+                    <th className="px-4 py-3 text-right">Selling price</th>
+                    <th className="px-4 py-3 text-right">Margin</th>
+                    <th className="px-4 py-3 text-right">Total sales (KSh)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.fullProductTable.map((p, i) => (
+                    <tr key={p.sku} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                      <td className="px-4 py-2">
+                        <p className="truncate font-medium text-gray-800">{p.product}</p>
+                        <p className="text-[11px] text-gray-400">{p.sku}</p>
+                      </td>
+                      <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
+                      <td className="px-4 py-2 text-right text-gray-700">{fmtD(p.buyingPrice)}</td>
+                      <td className="px-4 py-2 text-right text-gray-700">{fmtD(p.sellingPrice)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
+                          {p.margin}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         <p className="mt-10 text-center text-[11px] text-gray-400">
           Generated automatically · AfyaNzima Pharmacy as a Service
