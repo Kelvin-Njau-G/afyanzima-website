@@ -78,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     activeFacilities.add(fac);
   }
   const dates = Object.keys(byDate).sort();
-  const allFacilities = [...activeFacilities].sort();
+  const allFacilities = Array.from(activeFacilities).sort();
 
   // Discounts for this facility
   const discRow = discRes.data.rows.find(

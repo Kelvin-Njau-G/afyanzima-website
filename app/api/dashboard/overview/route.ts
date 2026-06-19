@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     activeFacilities.add(fac);
   }
   const dates = Object.keys(byDate).sort();
-  const allFacilities = [...activeFacilities].sort();
+  const allFacilities = Array.from(activeFacilities).sort();
   const dateLabels = dates.map((d) => `${today.toLocaleDateString('en-GB', { month: 'short' })} ${parseInt(d.slice(8))}`);
 
   // Margins
