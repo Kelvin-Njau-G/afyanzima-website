@@ -10,9 +10,6 @@ type DashboardData = {
   generatedAt: string;
   dates: string[];
   dateLabels: string[];
-  allFacilities: string[];
-  margins: Record<string, number>;
-  dataset: Record<string, number[]>;
   metrics: {
     gross: number;
     net: number;
@@ -28,7 +25,6 @@ type DashboardData = {
   };
 };
 
-const PALETTE = ['#533ab7', '#185fa5', '#1d9e75', '#3b6d11', '#ba7517', '#d85a30', '#993556'];
 const fmt = (n: number) => Math.round(n).toLocaleString();
 
 export default function PartnerDashboard({ params }: { params: { slug: string } }) {
@@ -38,9 +34,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   const [data, setData] = useState<DashboardData | null>(null);
 
   const dailyRef = useRef<HTMLCanvasElement>(null);
-  const stackRef = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
-  const stackChartRef = useRef<unknown>(null);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -81,10 +75,9 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   function renderCharts(d: DashboardData) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Chart = (window as any).Chart;
-    if (!Chart || !dailyRef.current || !stackRef.current) return;
+    if (!Chart || !dailyRef.current) return;
 
     if (dailyChartRef.current) (dailyChartRef.current as { destroy(): void }).destroy();
-    if (stackChartRef.current) (stackChartRef.current as { destroy(): void }).destroy();
 
     const today = new Date().toISOString().slice(0, 10);
     const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
@@ -299,26 +292,6 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
               <span className={`font-medium ${row.cls}`}>{row.value}</span>
             </div>
           ))}
-        </div>
-
-        <hr className="my-6 border-gray-200" />
-
-        {/* Stacked chart */}
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">All AfyaNzima facilities — daily revenue</p>
-        <div className="mb-3 flex flex-wrap gap-3">
-          {data.allFacilities.map((fac, i) => (
-            <span key={fac} className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
-              {fac}
-              {data.margins[fac] != null && <span className="text-gray-400">{data.margins[fac]}%</span>}
-            </span>
-          ))}
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-5">
-          <div className="relative h-80 w-full">
-            <canvas ref={stackRef} role="img" aria-label="Stacked bar chart of daily revenue per facility this month." />
-          </div>
-          <p className="mt-2 text-[11px] text-gray-400">Hover any bar to see per-facility revenue and gross margin %</p>
         </div>
 
         <p className="mt-10 text-center text-[11px] text-gray-400">

@@ -37,8 +37,14 @@ export const FACILITIES: Record<string, FacilityConfig> = {
   },
 };
 
+export const DASHBOARD_PASSWORD_HASH = sha256('paas-dashboard2026');
+
 export function checkPassword(slug: string, password: string): boolean {
   const facility = FACILITIES[slug];
   if (!facility) return false;
   return sha256(password) === facility.passwordHash;
+}
+
+export function checkDashboardPassword(password: string): boolean {
+  return sha256(password) === DASHBOARD_PASSWORD_HASH;
 }
