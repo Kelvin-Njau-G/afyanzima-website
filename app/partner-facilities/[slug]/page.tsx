@@ -124,49 +124,6 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         },
       },
     });
-
-    stackChartRef.current = new Chart(stackRef.current, {
-      type: 'bar',
-      data: {
-        labels: d.dateLabels,
-        datasets: d.allFacilities.map((fac, i) => ({
-          label: fac,
-          data: d.dataset[fac],
-          backgroundColor: PALETTE[i % PALETTE.length],
-          stack: 'rev',
-          borderWidth: 0,
-          borderRadius: i === d.allFacilities.length - 1 ? { topLeft: 3, topRight: 3 } : 0,
-        })),
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: (items: { dataIndex: number; parsed: { y: number } }[]) => {
-                const total = items.reduce((s, i) => s + i.parsed.y, 0);
-                return `${d.dateLabels[items[0].dataIndex]} · Total: KSh ${fmt(total)}`;
-              },
-              label: (ctx: { parsed: { y: number }; dataset: { label: string } }) => {
-                if (!ctx.parsed.y) return null;
-                const m = d.margins[ctx.dataset.label] ?? '—';
-                const name = ctx.dataset.label.length > 30 ? ctx.dataset.label.slice(0, 28) + '…' : ctx.dataset.label;
-                return `  ${name}: KSh ${fmt(ctx.parsed.y)} · margin ${m}%`;
-              },
-            },
-            padding: 10,
-            boxPadding: 4,
-          },
-        },
-        scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
-          y: { stacked: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1000).toFixed(0)}k` } },
-        },
-      },
-    });
   }
 
   if (!data) {
