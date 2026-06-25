@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-type DailyEntry = { date: string; label: string; revenue: number };
+type DailyEntry = { date: string; label: string; revenue: number; cogs: number; profit: number };
 
 type DashboardData = {
   facility: string;
@@ -12,7 +12,7 @@ type DashboardData = {
   dateLabels: string[];
   metrics: {
     gross: number; net: number; discountAmt: number; discountPct: number;
-    marginPct: number; netMarginPct: number; grossProfit: number;
+    marginPct: number; netMarginPct: number; grossProfit: number; netProfit: number;
     avgDaily: number; projected: number; daysInMonth: number;
     daily: DailyEntry[];
   };
@@ -24,6 +24,11 @@ type DashboardData = {
     product: string; sku: string; buyingPrice: number | null;
     sellingPrice: number | null; margin: number; revenue: number; qty: number;
   }>;
+  dailySalesByProduct: {
+    headers: string[];
+    colTypes: string[];
+    rows: (string | number | null)[][];
+  };
 };
 
 const fmt  = (n: number) => Math.round(n).toLocaleString();
@@ -37,14 +42,25 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+function formatCell(value: string | number | null, colType: string, header: string): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'number') {
+    const isPct = /margin|%|pct|percent/i.test(header);
+    return isPct ? `${value.toFixed(1)}%` : fmt(value);
+  }
+  return String(value);
+}
+
 export default function PartnerDashboard({ params }: { params: { slug: string } }) {
   const [password, setPassword]   = useState('');
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
   const [data, setData]           = useState<DashboardData | null>(null);
 
-  const dailyRef     = useRef<HTMLCanvasElement>(null);
+  const dailyRef      = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
+  const marginRef      = useRef<HTMLCanvasElement>(null);
+  const marginChartRef = useRef<unknown>(null);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -70,13 +86,13 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     if (!data) return;
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-    script.onload = () => renderChart(data);
+    script.onload = () => { renderDailyChart(data); renderMarginChart(data); };
     document.head.appendChild(script);
     return () => { document.head.removeChild(script); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  function renderChart(d: DashboardData) {
+  function renderDailyChart(d: DashboardData) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Chart = (window as any).Chart;
     if (!Chart || !dailyRef.current) return;
@@ -109,6 +125,55 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
           y: { grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1000).toFixed(0)}k` } },
+        },
+      },
+    });
+  }
+
+  function renderMarginChart(d: DashboardData) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Chart = (window as any).Chart;
+    if (!Chart || !marginRef.current) return;
+    if (marginChartRef.current) (marginChartRef.current as { destroy(): void }).destroy();
+    const isDark    = matchMedia('(prefers-color-scheme: dark)').matches;
+    const textColor = isDark ? '#b4b2a9' : '#888780';
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    marginChartRef.current = new Chart(marginRef.current, {
+      type: 'bar',
+      data: {
+        labels: d.metrics.daily.map(e => e.label),
+        datasets: [
+          {
+            label: 'COGS',
+            data: d.metrics.daily.map(e => e.cogs),
+            backgroundColor: isDark ? '#374151' : '#d1d5db',
+            stack: 'daily',
+            borderRadius: 0,
+          },
+          {
+            label: 'Gross profit',
+            data: d.metrics.daily.map(e => e.profit),
+            backgroundColor: '#1d9e75',
+            stack: 'daily',
+            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (c: { parsed: { y: number }; dataset: { label: string } }) =>
+                ` ${c.dataset.label}: KSh ${fmt(c.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
+          y: { stacked: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1000).toFixed(0)}k` } },
         },
       },
     });
@@ -163,11 +228,11 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Month-to-date summary</p>
         <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           {[
-            { label: 'Gross revenue',     value: fmt(m.gross),       sub: 'KSh · before discounts' },
-            { label: 'Net revenue',       value: fmt(m.net),         sub: 'KSh · after discounts' },
-            { label: 'Discounts given',   value: fmt(m.discountAmt), sub: `KSh · ${m.discountPct}% of gross` },
-            { label: 'Gross margin %',    value: `${m.marginPct}%`,  sub: `Net margin ${m.netMarginPct}%` },
-            { label: 'Gross margin (KSh)', value: fmt(m.grossProfit), sub: `Gross rev × ${m.marginPct}%`, accent: true },
+            { label: 'Gross revenue',    value: fmt(m.gross),       sub: 'KSh · before discounts' },
+            { label: 'Net revenue',      value: fmt(m.net),         sub: 'KSh · after discounts' },
+            { label: 'Discounts given',  value: fmt(m.discountAmt), sub: `KSh · ${m.discountPct}% of gross` },
+            { label: 'Gross margin %',   value: `${m.marginPct}%`,  sub: `Net margin ${m.netMarginPct}%` },
+            { label: 'Net margin (KSh)', value: fmt(m.netProfit),   sub: 'Gross profit − discounts', accent: true },
           ].map(card => (
             <div key={card.label} className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}>
               <p className="mb-1 text-[11px] text-gray-500">{card.label}</p>
@@ -189,6 +254,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </div>
         </div>
 
+        {/* Daily sales chart */}
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales — {data.monthLabel}</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
           <div className="relative h-56 w-full">
@@ -200,6 +266,59 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
             <span className="ml-auto">* today is partial</span>
           </div>
         </div>
+
+        {/* Daily Sales & Margin chart */}
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales & margin — {data.monthLabel}</p>
+        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
+          <div className="relative h-56 w-full">
+            <canvas ref={marginRef} role="img" aria-label="Stacked bar chart showing COGS and gross profit per day." />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-400">
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" />Gross profit</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-gray-300" />COGS</span>
+          </div>
+        </div>
+
+        {/* Daily Sales by Product table */}
+        {data.dailySalesByProduct.rows.length > 0 && (
+          <>
+            <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales by product — {data.monthLabel}</p>
+            <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                    {data.dailySalesByProduct.headers.map(h => (
+                      <th
+                        key={h}
+                        className={`px-4 py-3 ${data.dailySalesByProduct.colTypes[data.dailySalesByProduct.headers.indexOf(h)] === 'number' ? 'text-right' : ''}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.dailySalesByProduct.rows.map((row, i) => (
+                    <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                      {row.map((cell, j) => {
+                        const colType = data.dailySalesByProduct.colTypes[j];
+                        const header  = data.dailySalesByProduct.headers[j];
+                        return (
+                          <td
+                            key={j}
+                            className={`px-4 py-2 ${colType === 'number' ? 'text-right font-medium text-gray-900' : 'text-gray-700'}`}
+                          >
+                            {formatCell(cell, colType, header)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Revenue breakdown</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
