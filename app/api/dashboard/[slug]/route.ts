@@ -53,17 +53,18 @@ function simplifyType(baseType: string): 'number' | 'date' | 'text' {
  * Each inner array is a list of keywords; the first match wins.
  */
 const COL_ORDER_KEYWORDS: string[][] = [
-  ['cart_time', 'cart time', 'minute'],   // Cart_Time Minute
-  ['product'],                             // Product
-  ['pack'],                                // Pack
-  ['buying'],                              // Buying Price
-  ['selling'],                             // Selling Price
-  ['quantity', 'qty'],                     // Quantity
-  ['discount'],                            // Total Discount
-  ['revenue', 'sale_amount', 'sale amount'], // Revenue
-  ['profit'],                              // Profit
-  ['margin'],                              // Margin
-  ['order'],                               // Order Number
+  ['cart_time', 'cart time', 'minute'],           // Cart_Time Minute
+  ['product'],                                      // Product
+  ['pack'],                                         // Pack
+  // Unit_Purchase_Price must be matched BEFORE Unit_Price to avoid substring clash
+  ['unit_purchase', 'purchase_price', 'purchase'],  // Unit_Purchase_Price
+  ['unit_price', 'unit price'],                     // Unit_Price
+  ['quantity', 'qty'],                              // Sum of Quantity
+  ['discount'],                                     // Sum of Discount
+  ['sale_amount', 'sale amount', 'revenue'],        // Sum of Sale_Amount
+  ['profit'],                                       // Sum of Profit
+  ['margin'],                                       // Margin
+  ['order_number', 'order'],                        // Order_Number
 ];
 
 function desiredColRank(col: MbCol): number {
