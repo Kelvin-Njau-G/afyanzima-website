@@ -45,8 +45,9 @@ function SectionHeader({ title }: { title: string }) {
 function formatCell(value: string | number | null, colType: string, header: string): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'number') {
-    const isPct = /margin|%|pct|percent/i.test(header);
-    return isPct ? `${value.toFixed(1)}%` : fmt(value);
+    // Margin is stored as a decimal (e.g. 0.282) — convert to a real percentage
+    if (/\bmargin\b/i.test(header)) return `${(value * 100).toFixed(2)}%`;
+    return fmt(value);
   }
   return String(value);
 }
@@ -279,62 +280,87 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </div>
         </div>
 
-        {/* Daily Sales by Product table */}
-        {data.dailySalesByProduct.rows.length > 0 && (
-          <>
-            <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales by product — {data.monthLabel}</p>
-            <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                    {data.dailySalesByProduct.headers.map(h => (
-                      <th
-                        key={h}
-                        className={`px-4 py-3 ${data.dailySalesByProduct.colTypes[data.dailySalesByProduct.headers.indexOf(h)] === 'number' ? 'text-right' : ''}`}
-                      >
-                        {h}
-                      </th>
+        {/* Daily Sales by Product table — sticky header + first 2 columns, scrolls within the card */}
+        {data.dailySalesByProduct.rows.length > 0 && (() => {
+          // Fixed px widths for each column position (Cart Time, Product, Pack, …)
+          const COL_W = [80, 160, 70, 90, 90, 70, 100, 90, 80, 70, 110];
+          const col1Left = COL_W[0]; // left offset for the second sticky column
+          const tableMinW = COL_W.reduce((s, w) => s + w, 0);
+          return (
+            <>
+              <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales by product — {data.monthLabel}</p>
+              {/* max-h + overflow-auto confines scrolling to this card; overscroll-contain stops page scroll chaining */}
+              <div className="mb-6 max-h-[400px] overflow-auto overscroll-contain rounded-xl border border-gray-100">
+                <table
+                  className="w-full text-sm"
+                  style={{ tableLayout: 'fixed', minWidth: `${tableMinW}px`, borderCollapse: 'separate', borderSpacing: 0 }}
+                >
+                  <colgroup>
+                    {data.dailySalesByProduct.headers.map((_, j) => (
+                      <col key={j} style={{ width: `${COL_W[j] ?? 90}px` }} />
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.dailySalesByProduct.rows.map((row, i) => (
-                    <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                      {row.map((cell, j) => {
+                  </colgroup>
+
+                  <thead>
+                    <tr>
+                      {data.dailySalesByProduct.headers.map((h, j) => {
                         const colType = data.dailySalesByProduct.colTypes[j];
-                        const header  = data.dailySalesByProduct.headers[j];
+                        const isFreeze = j <= 1;
                         return (
-                          <td
-                            key={j}
-                            className={`px-4 py-2 ${colType === 'number' ? 'text-right font-medium text-gray-900' : 'text-gray-700'}`}
+                          <th
+                            key={h}
+                            className={[
+                              'px-3 py-3 truncate border-b border-gray-200',
+                              'text-[11px] font-medium uppercase tracking-wider text-gray-400',
+                              'sticky top-0 bg-gray-50',
+                              isFreeze ? 'z-30' : 'z-20',
+                              colType === 'number' ? 'text-right' : 'text-left',
+                              j === 1 ? 'border-r border-gray-200' : '',
+                            ].filter(Boolean).join(' ')}
+                            style={j === 0 ? { left: 0 } : j === 1 ? { left: col1Left } : undefined}
                           >
-                            {formatCell(cell, colType, header)}
-                          </td>
+                            {h}
+                          </th>
                         );
                       })}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  </thead>
 
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Revenue breakdown</p>
-        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
-          {[
-            { label: 'Gross revenue (MTD)',              value: `KSh ${fmt(m.gross)}`,              cls: '' },
-            { label: 'Less: discounts',                  value: `− KSh ${fmt(m.discountAmt)}`,       cls: 'text-red-600' },
-            { label: 'Net revenue (MTD)',                value: `KSh ${fmt(m.net)}`,                cls: '', bold: true },
-            { label: `Est. COGS (${100 - m.marginPct}% of gross)`, value: `− KSh ${fmt(m.gross - m.grossProfit)}`, cls: 'text-red-600' },
-            { label: 'Gross profit (MTD)',               value: `KSh ${fmt(m.grossProfit)}`,        cls: 'text-green-700', bold: true },
-          ].map((row, i, arr) => (
-            <div key={row.label} className={`flex justify-between py-1.5 text-sm ${i < arr.length - 1 ? 'border-b border-gray-100' : ''}`}>
-              <span className="text-gray-500">{row.label}</span>
-              <span className={`font-medium ${row.cls}`}>{row.value}</span>
-            </div>
-          ))}
-        </div>
+                  <tbody>
+                    {data.dailySalesByProduct.rows.map((row, i) => {
+                      const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                      return (
+                        <tr key={i} className={`border-b border-gray-50 ${rowBg}`}>
+                          {row.map((cell, j) => {
+                            const colType = data.dailySalesByProduct.colTypes[j];
+                            const header  = data.dailySalesByProduct.headers[j];
+                            const isFreeze = j <= 1;
+                            return (
+                              <td
+                                key={j}
+                                className={[
+                                  'px-3 py-2 truncate',
+                                  isFreeze ? `sticky z-10 ${rowBg}` : '',
+                                  j === 1 ? 'border-r border-gray-200' : '',
+                                  colType === 'number'
+                                    ? 'text-right font-medium text-gray-900'
+                                    : 'text-gray-700',
+                                ].filter(Boolean).join(' ')}
+                                style={j === 0 ? { left: 0 } : j === 1 ? { left: col1Left } : undefined}
+                              >
+                                {formatCell(cell, colType, header)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Top 20 products this month</p>
         <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
