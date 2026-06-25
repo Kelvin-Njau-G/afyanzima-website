@@ -48,6 +48,32 @@ function simplifyType(baseType: string): 'number' | 'date' | 'text' {
   return 'text';
 }
 
+/**
+ * Desired display order for the Daily Sales by Product table columns.
+ * Each inner array is a list of keywords; the first match wins.
+ */
+const COL_ORDER_KEYWORDS: string[][] = [
+  ['cart_time', 'cart time', 'minute'],   // Cart_Time Minute
+  ['product'],                             // Product
+  ['pack'],                                // Pack
+  ['buying'],                              // Buying Price
+  ['selling'],                             // Selling Price
+  ['quantity', 'qty'],                     // Quantity
+  ['discount'],                            // Total Discount
+  ['revenue', 'sale_amount', 'sale amount'], // Revenue
+  ['profit'],                              // Profit
+  ['margin'],                              // Margin
+  ['order'],                               // Order Number
+];
+
+function desiredColRank(col: MbCol): number {
+  const name = (col.display_name || col.name || '').toLowerCase();
+  for (let i = 0; i < COL_ORDER_KEYWORDS.length; i++) {
+    if (COL_ORDER_KEYWORDS[i].some(kw => name.includes(kw))) return i;
+  }
+  return 999; // unknown columns go to the end
+}
+
 function topProductsQuery(facilityName: string, monthStart: string, monthEnd: string, limit = 20) {
   return {
     database: 5,
@@ -230,23 +256,22 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return true;
   });
 
+  // Build the included columns sorted by the desired display order
+  const includedCols = dbpCols
+    .map((col, i) => ({ col, i }))
+    .filter(({ i }) => !excludedIdxs.has(i))
+    .sort((a, b) => desiredColRank(a.col) - desiredColRank(b.col));
+
   const dailySalesByProduct = {
-    headers: dbpCols
-      .filter((_, i) => !excludedIdxs.has(i))
-      .map(c => c.display_name || c.name),
-    colTypes: dbpCols
-      .filter((_, i) => !excludedIdxs.has(i))
-      .map(c => simplifyType(c.base_type || '')),
+    headers:  includedCols.map(({ col }) => col.display_name || col.name),
+    colTypes: includedCols.map(({ col }) => simplifyType(col.base_type || '')),
     rows: filteredProdRows.map(row =>
-      dbpCols
-        .map((_, i) => i)
-        .filter(i => !excludedIdxs.has(i))
-        .map(i => {
-          const val = row[i];
-          // Truncate datetime strings to date-only for cleaner display
-          if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
-          return val as string | number | null;
-        })
+      includedCols.map(({ i }) => {
+        const val = row[i];
+        // Truncate datetime strings to date-only for cleaner display
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
+        return val as string | number | null;
+      })
     ),
   };
 
