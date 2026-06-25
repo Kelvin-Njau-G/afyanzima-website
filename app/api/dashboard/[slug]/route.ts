@@ -8,6 +8,9 @@ const MB_PASS = process.env.METABASE_PASSWORD!;
 
 const QAALANE_SLUG = 'qaalane';
 
+type MbCol = { name: string; display_name: string; base_type: string };
+type MbResult = { data: { cols: MbCol[]; rows: unknown[][] } };
+
 function mbFetch(path: string, body?: object, token?: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : undefined;
@@ -25,6 +28,24 @@ function mbFetch(path: string, body?: object, token?: string): Promise<unknown> 
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+/** Find a column index by matching any of the given keywords against name or display_name (case-insensitive). */
+function colIdx(cols: MbCol[], ...keywords: string[]): number {
+  const kws = keywords.map(k => k.toLowerCase());
+  return cols.findIndex(c =>
+    kws.some(kw =>
+      c.name.toLowerCase().includes(kw) ||
+      (c.display_name || '').toLowerCase().includes(kw)
+    )
+  );
+}
+
+/** Convert a Metabase base_type string into a simple client-friendly type tag. */
+function simplifyType(baseType: string): 'number' | 'date' | 'text' {
+  if (/Float|Integer|Decimal|BigInteger/i.test(baseType)) return 'number';
+  if (/DateTime|Date|Time/i.test(baseType)) return 'date';
+  return 'text';
 }
 
 function topProductsQuery(facilityName: string, monthStart: string, monthEnd: string, limit = 20) {
@@ -83,16 +104,18 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 20), token), // 3: top 20 products
     mbFetch('/api/card/2507/query', {}, token),   // 4: inventory value by class
     mbFetch('/api/card/1661/query', {}, token),   // 5: monthly restock value
+    mbFetch('/api/card/3193/query', {}, token),   // 6: daily COGS & profit
+    mbFetch('/api/card/3191/query', {}, token),   // 7: daily sales by product
   ];
   if (isQaalane) {
-    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 500), token)); // 6: all products
-    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 7: buying prices
+    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 500), token)); // 8
+    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 9
   }
 
-  const results = await Promise.all(fetches) as Array<{ data: { rows: unknown[][] } }>;
-  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes] = results;
+  const results = await Promise.all(fetches) as MbResult[];
+  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes] = results;
 
-  // ── Daily revenue ───────────────────────────────────────────────────────────
+  // ── Daily revenue ────────────────────────────────────────────────────────────
   const monthRows = dailyRes.data.rows.filter(r => typeof r[0] === 'string' && r[0].startsWith(monthPrefix));
   const byDate: Record<string, Record<string, number>> = {};
   const activeFacilities = new Set<string>();
@@ -105,35 +128,73 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
   const dates = Object.keys(byDate).sort();
 
-  // ── Discounts ───────────────────────────────────────────────────────────────
+  // ── Discounts ────────────────────────────────────────────────────────────────
   const discRow = discRes.data.rows.find(r => typeof r[0] === 'string' && r[0].startsWith(monthPrefix) && r[1] === facilityName);
-  const gross      = Math.round((discRow?.[2] as number) || 0);
+  const gross       = Math.round((discRow?.[2] as number) || 0);
   const discountPct = Math.round(((discRow?.[3] as number) || 0) * 1000) / 10;
   const discountAmt = Math.round((discRow?.[4] as number) || 0);
   const net         = Math.round((discRow?.[5] as number) || 0);
 
-  // ── Margin ──────────────────────────────────────────────────────────────────
+  // ── Margin ───────────────────────────────────────────────────────────────────
   const margins: Record<string, number> = {};
   for (const row of marginRes.data.rows) {
     if (typeof row[0] === 'string' && row[0].startsWith(monthPrefix))
       margins[row[1] as string] = Math.round((row[2] as number) * 1000) / 10;
   }
-  const marginPct  = margins[facilityName] ?? 0;
+  const marginPct   = margins[facilityName] ?? 0;
   const grossProfit = Math.round(gross * marginPct / 100);
+  const netProfit   = grossProfit - discountAmt;
 
-  // ── Daily stats ─────────────────────────────────────────────────────────────
-  const daily = dates.map(d => ({
-    date: d,
-    label: `${today.toLocaleDateString('en-GB', { month: 'short' })} ${parseInt(d.slice(8))}`,
-    revenue: byDate[d]?.[facilityName] ?? 0,
-  }));
+  // ── Daily COGS & profit (card 3193) ─────────────────────────────────────────
+  const dpCols      = dailyProfitRes.data.cols;
+  const dpDateIdx   = colIdx(dpCols, 'cart_time', 'date', 'day');
+  const dpOrgIdx    = colIdx(dpCols, 'organization_name', 'organization', 'facility', 'org');
+  const dpProfitIdx = colIdx(dpCols, 'profit');
+  const dpCogsIdx   = colIdx(dpCols, 'cogs', 'cost_of_goods', 'cost');
+  const dpRevIdx    = colIdx(dpCols, 'sale_amount', 'revenue', 'sales', 'amount');
+
+  const dailyProfitMap: Record<string, number> = {};
+  const dailyCOGSMap: Record<string, number> = {};
+
+  for (const row of dailyProfitRes.data.rows) {
+    const rawDate = dpDateIdx >= 0 ? row[dpDateIdx] : null;
+    const d = typeof rawDate === 'string' ? rawDate.slice(0, 10) : '';
+    if (!d.startsWith(monthPrefix)) continue;
+    const fac = dpOrgIdx >= 0 ? (row[dpOrgIdx] as string) : '';
+    if (fac !== facilityName) continue;
+
+    if (dpProfitIdx >= 0) dailyProfitMap[d] = Math.round((row[dpProfitIdx] as number) || 0);
+    if (dpCogsIdx >= 0) {
+      dailyCOGSMap[d] = Math.round((row[dpCogsIdx] as number) || 0);
+    } else if (dpRevIdx >= 0 && dpProfitIdx >= 0) {
+      // Derive COGS from revenue minus profit when no explicit COGS column exists
+      dailyCOGSMap[d] = Math.round(((row[dpRevIdx] as number) || 0) - ((row[dpProfitIdx] as number) || 0));
+    }
+  }
+
+  // ── Daily stats ──────────────────────────────────────────────────────────────
+  const daily = dates.map(d => {
+    const revenue   = byDate[d]?.[facilityName] ?? 0;
+    const rawProfit = dailyProfitMap[d];
+    const rawCOGS   = dailyCOGSMap[d];
+    // Fall back to the month-level margin estimate when card 3193 has no row for this day
+    const profit = rawProfit !== undefined ? rawProfit : Math.round(revenue * marginPct / 100);
+    const cogs   = rawCOGS   !== undefined ? rawCOGS   : (revenue - profit);
+    return {
+      date: d,
+      label: `${today.toLocaleDateString('en-GB', { month: 'short' })} ${parseInt(d.slice(8))}`,
+      revenue,
+      cogs:   Math.max(0, cogs),
+      profit: Math.max(0, profit),
+    };
+  });
+
   const completeDays = daily.filter(d => d.date < todayStr && d.revenue > 0).map(d => d.revenue);
-  const avgDaily   = completeDays.length ? Math.round(completeDays.reduce((a, b) => a + b, 0) / completeDays.length) : 0;
+  const avgDaily    = completeDays.length ? Math.round(completeDays.reduce((a, b) => a + b, 0) / completeDays.length) : 0;
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const projected  = avgDaily * daysInMonth;
+  const projected   = avgDaily * daysInMonth;
 
-  // ── Top 20 products ─────────────────────────────────────────────────────────
-  // cols: Product, SKU, qty, revenue, profit
+  // ── Top 20 products ──────────────────────────────────────────────────────────
   const topProducts = topProdRes.data.rows.map(row => ({
     product: row[0] as string,
     sku:     row[1] as string,
@@ -142,27 +203,62 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     margin:  (row[3] as number) > 0 ? Math.round(((row[4] as number) / (row[3] as number)) * 1000) / 10 : 0,
   }));
 
-  // ── Inventory value ─────────────────────────────────────────────────────────
-  // card 2507: org_name, ABC Category, sum(inventory_value)
+  // ── Inventory value ──────────────────────────────────────────────────────────
   const invRows = invByClassRes.data.rows.filter(r => r[0] === facilityName);
   const inventoryValue = Math.round(invRows.reduce((s, r) => s + ((r[2] as number) || 0), 0));
 
-  // ── Monthly restock ─────────────────────────────────────────────────────────
-  // card 1661: org_name, stock_movement_date, sku, name, qty, avg_price, total_value
+  // ── Monthly restock ──────────────────────────────────────────────────────────
   const restockRows = restockRes.data.rows.filter(
     r => r[0] === facilityName && typeof r[1] === 'string' && r[1].startsWith(monthPrefix)
   );
   const monthlyRestockValue = Math.round(restockRows.reduce((s, r) => s + ((r[6] as number) || 0), 0));
 
-  // ── Full product table (Qaalane only) ───────────────────────────────────────
+  // ── Daily sales by product (card 3191) ───────────────────────────────────────
+  const dbpCols    = dailyByProdRes.data.cols;
+  const dbpOrgIdx  = colIdx(dbpCols, 'organization_name', 'organization', 'facility', 'org');
+  const dbpDateIdx = colIdx(dbpCols, 'cart_time', 'date', 'day');
+
+  const excludedIdxs = new Set<number>();
+  if (dbpOrgIdx >= 0) excludedIdxs.add(dbpOrgIdx);
+
+  const filteredProdRows = dailyByProdRes.data.rows.filter(row => {
+    if (dbpOrgIdx >= 0 && row[dbpOrgIdx] !== facilityName) return false;
+    if (dbpDateIdx >= 0) {
+      const rawD = row[dbpDateIdx];
+      if (typeof rawD === 'string' && !rawD.startsWith(monthPrefix)) return false;
+    }
+    return true;
+  });
+
+  const dailySalesByProduct = {
+    headers: dbpCols
+      .filter((_, i) => !excludedIdxs.has(i))
+      .map(c => c.display_name || c.name),
+    colTypes: dbpCols
+      .filter((_, i) => !excludedIdxs.has(i))
+      .map(c => simplifyType(c.base_type || '')),
+    rows: filteredProdRows.map(row =>
+      dbpCols
+        .map((_, i) => i)
+        .filter(i => !excludedIdxs.has(i))
+        .map(i => {
+          const val = row[i];
+          // Truncate datetime strings to date-only for cleaner display
+          if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
+          return val as string | number | null;
+        })
+    ),
+  };
+
+  // ── Full product table (Qaalane only) ────────────────────────────────────────
   let fullProductTable: Array<{
     product: string; sku: string; buyingPrice: number | null;
     sellingPrice: number | null; margin: number; revenue: number; qty: number;
   }> = [];
 
-  if (isQaalane && results[6] && results[7]) {
-    const allProdRes  = results[6];
-    const invPriceRes = results[7];
+  if (isQaalane && results[8] && results[9]) {
+    const allProdRes  = results[8];
+    const invPriceRes = results[9];
 
     // Build buying price lookup: SKU → avg_buying_price
     // card 2501 cols: org_name, sku, product_name, molecular_name, qty, inv_value, avg_buying_price, last_restock
@@ -199,10 +295,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     metrics: {
       gross, net, discountAmt, discountPct, marginPct,
       netMarginPct: gross ? Math.round((net / gross) * marginPct * 10) / 10 : 0,
-      grossProfit, avgDaily, projected, daysInMonth, daily,
+      grossProfit, netProfit, avgDaily, projected, daysInMonth, daily,
     },
     commercial: { topProducts },
     inventory:  { inventoryValue, monthlyRestockValue },
     fullProductTable: isQaalane ? fullProductTable : [],
+    dailySalesByProduct,
   });
 }
