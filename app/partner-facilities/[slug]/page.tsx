@@ -283,7 +283,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         {/* Daily Sales by Product table — sticky header + first 2 columns, scrolls within the card */}
         {data.dailySalesByProduct.rows.length > 0 && (() => {
           // Fixed px widths for each column position (Cart Time, Product, Pack, …)
-          const COL_W = [90, 160, 70, 90, 90, 70, 100, 90, 80, 70, 110];
+          const COL_W = [120, 280, 70, 90, 90, 70, 100, 90, 80, 70, 110];
           const col1Left = COL_W[0]; // left offset for the second sticky column
           const tableMinW = COL_W.reduce((s, w) => s + w, 0);
           return (
