@@ -310,7 +310,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                           <th
                             key={h}
                             className={[
-                              'px-3 py-3 border-b border-gray-200 align-bottom',
+                              'px-3 py-3 border-b border-gray-200 align-bottom whitespace-normal break-words',
                               'text-[11px] font-medium uppercase tracking-wider text-gray-400',
                               'sticky top-0 bg-gray-50',
                               isFreeze ? 'z-30' : 'z-20',
@@ -319,7 +319,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                             ].filter(Boolean).join(' ')}
                             style={j === 0 ? { left: 0 } : j === 1 ? { left: col1Left } : undefined}
                           >
-                            {h}
+                            {h.replace(/_/g, ' ')}
                           </th>
                         );
                       })}
