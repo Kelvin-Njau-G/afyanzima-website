@@ -283,7 +283,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         {/* Daily Sales by Product table — sticky header + first 2 columns, scrolls within the card */}
         {data.dailySalesByProduct.rows.length > 0 && (() => {
           // Fixed px widths for each column position (Cart Time, Product, Pack, …)
-          const COL_W = [120, 280, 70, 90, 90, 70, 100, 90, 80, 70, 110];
+          const COL_W = [80, 160, 70, 90, 90, 70, 100, 90, 80, 70, 110];
           const col1Left = COL_W[0]; // left offset for the second sticky column
           const tableMinW = COL_W.reduce((s, w) => s + w, 0);
           return (
@@ -310,7 +310,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                           <th
                             key={h}
                             className={[
-                              'px-3 py-3 truncate border-b border-gray-200',
+                              'px-3 py-3 border-b border-gray-200 align-bottom',
                               'text-[11px] font-medium uppercase tracking-wider text-gray-400',
                               'sticky top-0 bg-gray-50',
                               isFreeze ? 'z-30' : 'z-20',
@@ -339,7 +339,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                               <td
                                 key={j}
                                 className={[
-                                  'px-3 py-2 truncate',
+                                  'px-3 py-2',
                                   isFreeze ? `sticky z-10 ${rowBg}` : '',
                                   j === 1 ? 'border-r border-gray-200' : '',
                                   colType === 'number'
