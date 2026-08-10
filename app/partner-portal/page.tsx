@@ -83,7 +83,7 @@ function LoginForm() {
           <h1 className="text-lg font-medium text-gray-900">AfyaNzima Partner Portal</h1>
           <p className="mt-1 text-sm text-gray-500">
             {step === 'email'
-              ? 'Sign in with your work email to view your facility dashboard.'
+              ? 'Sign in with your registered email to view your facility dashboard.'
               : `We've sent a 6-digit code to ${email} if that address is registered.`}
           </p>
         </div>

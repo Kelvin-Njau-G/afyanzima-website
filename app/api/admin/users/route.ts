@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { portalDb } from '@/lib/portal/db';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
-import { FACILITIES } from '@/lib/facilities';
+import { listFacilities } from '@/lib/portal/facilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,9 +49,11 @@ export async function GET(req: NextRequest) {
     byUser.set(row.user_id, list);
   }
 
+  const allFacilities = await listFacilities();
+
   return NextResponse.json({
     users: (users ?? []).map((u) => ({ ...u, facilities: byUser.get(u.id) ?? [] })),
-    allFacilities: Object.entries(FACILITIES).map(([slug, f]) => ({ slug, name: f.name })),
+    allFacilities: allFacilities.map((f) => ({ slug: f.slug, name: f.name })),
   });
 }
 
@@ -69,8 +71,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That email address looks invalid.' }, { status: 400 });
   }
 
-  // Only slugs we actually know about.
-  const validFacilities = facilities.filter((slug) => !!FACILITIES[slug]);
+  // Only slugs that exist and are active.
+  const known = new Set((await listFacilities()).map((f) => f.slug));
+  const validFacilities = facilities.filter((slug) => known.has(slug));
 
   if (role === 'partner' && validFacilities.length === 0) {
     return NextResponse.json(
@@ -129,7 +132,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (Array.isArray(body?.facilities)) {
-    const validFacilities = (body.facilities as string[]).filter((slug) => !!FACILITIES[slug]);
+    const known = new Set((await listFacilities()).map((f) => f.slug));
+    const validFacilities = (body.facilities as string[]).filter((slug) => known.has(slug));
     await portalDb.from('portal_facility_access').delete().eq('user_id', id);
     if (validFacilities.length) {
       await portalDb.from('portal_facility_access').insert(

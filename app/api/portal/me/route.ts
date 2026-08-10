@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { facilitiesForUser, portalDb } from '@/lib/portal/db';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
-import { FACILITIES } from '@/lib/facilities';
+import { listFacilities } from '@/lib/portal/facilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,15 +23,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
   }
 
-  const slugs =
-    user.role === 'admin' ? Object.keys(FACILITIES) : await facilitiesForUser(user.id);
+  const all = await listFacilities();
+
+  // Admins see everything; partners see only what they've been granted.
+  const visible =
+    user.role === 'admin'
+      ? all
+      : await facilitiesForUser(user.id).then((slugs) =>
+          all.filter((f) => slugs.includes(f.slug)),
+        );
 
   return NextResponse.json({
     email: user.email,
     fullName: user.full_name,
     role: user.role,
-    facilities: slugs
-      .filter((slug) => FACILITIES[slug])
-      .map((slug) => ({ slug, name: FACILITIES[slug].name })),
+    facilities: visible.map((f) => ({ slug: f.slug, name: f.name })),
   });
 }

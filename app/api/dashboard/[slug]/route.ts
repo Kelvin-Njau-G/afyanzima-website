@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import https from 'https';
-import { checkPassword, FACILITIES } from '@/lib/facilities';
+import { checkPassword } from '@/lib/facilities';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
 import { userCanViewFacility } from '@/lib/portal/db';
+import { getFacility } from '@/lib/portal/facilities';
 
 const BASE = process.env.METABASE_URL!.replace(/\/$/, '');
 const MB_USER = process.env.METABASE_USER!;
@@ -106,7 +107,8 @@ function topProductsQuery(facilityName: string, monthStart: string, monthEnd: st
 
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
   const { slug } = params;
-  if (!FACILITIES[slug]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const facility = await getFacility(slug);
+  if (!facility) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // ---------------------------------------------------------------------
   // Authorisation. This is the gate that actually matters — the login page
@@ -136,7 +138,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return NextResponse.json({ error: 'Not authorised' }, { status: 401 });
   }
 
-  const facilityName = FACILITIES[slug].name;
+  const facilityName = facility.name;
   const today = new Date();
   const monthPrefix = today.toISOString().slice(0, 7);
   const monthLabel  = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
