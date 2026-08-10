@@ -38,9 +38,32 @@ export default function OverviewDashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<OverviewData | null>(null);
+  // True until we've checked for an existing admin portal session.
+  const [checking, setChecking] = useState(true);
 
   const stackRef = useRef<HTMLCanvasElement>(null);
   const stackChartRef = useRef<unknown>(null);
+
+  // Admins signed into the portal skip the password prompt entirely.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/dashboard/overview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!cancelled && res.ok) setData(await res.json());
+      } catch {
+        // Fall through to the password form.
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -121,6 +144,14 @@ export default function OverviewDashboard() {
         },
       },
     });
+  }
+
+  if (checking) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-400">Loading…</p>
+      </main>
+    );
   }
 
   if (!data) {

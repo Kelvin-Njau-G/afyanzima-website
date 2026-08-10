@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import https from 'https';
 import { checkPassword, FACILITIES } from '@/lib/facilities';
+import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
+import { userCanViewFacility } from '@/lib/portal/db';
 
 const BASE = process.env.METABASE_URL!.replace(/\/$/, '');
 const MB_USER = process.env.METABASE_USER!;
@@ -106,8 +108,33 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const { slug } = params;
   if (!FACILITIES[slug]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { password } = await req.json();
-  if (!checkPassword(slug, password)) return NextResponse.json({ error: 'Incorrect password' }, { status: 401 });
+  // ---------------------------------------------------------------------
+  // Authorisation. This is the gate that actually matters — the login page
+  // and middleware only control what the browser shows, whereas nothing gets
+  // past this point without proving access to THIS facility.
+  // ---------------------------------------------------------------------
+  const body = await req.json().catch(() => ({}));
+  const password: string | undefined = body?.password;
+
+  let authorised = false;
+
+  const session = await readSessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (session) {
+    // Checked against the database on every request, so revoking a facility
+    // in /admin locks the user out immediately rather than at session expiry.
+    authorised = await userCanViewFacility(session.sub, slug);
+  }
+
+  // Transitional: the old per-facility passwords still work while partners
+  // move across. Set PORTAL_LEGACY_PASSWORDS=false in Vercel to switch them
+  // off — no code change or redeploy of this file needed.
+  if (!authorised && process.env.PORTAL_LEGACY_PASSWORDS !== 'false' && password) {
+    authorised = checkPassword(slug, password);
+  }
+
+  if (!authorised) {
+    return NextResponse.json({ error: 'Not authorised' }, { status: 401 });
+  }
 
   const facilityName = FACILITIES[slug].name;
   const today = new Date();

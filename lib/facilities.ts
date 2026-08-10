@@ -1,5 +1,20 @@
 import crypto from 'crypto';
 
+/**
+ * LEGACY — transitional only.
+ *
+ * These per-facility passwords are kept alive while partners move to the
+ * portal. Two things to know:
+ *   1. The plaintext passwords are visible in this file. Hashing them here
+ *      does nothing when the input string sits right next to the hash. Keep
+ *      this repository PRIVATE until the block below is deleted.
+ *   2. Once every partner has a portal account, set PORTAL_LEGACY_PASSWORDS
+ *      to "false" in Vercel, then delete FACILITIES[].passwordHash,
+ *      DASHBOARD_PASSWORD_HASH, checkPassword and checkDashboardPassword.
+ *
+ * The `name` field is NOT legacy — the portal uses it for display, so keep it.
+ */
+
 export type FacilityConfig = {
   name: string;
   passwordHash: string; // SHA-256 of the facility's password

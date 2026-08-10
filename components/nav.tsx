@@ -18,9 +18,10 @@ export default function Nav() {
             <div className="w-[6.5rem] sm:w-[7.25rem]">
               <Image src={Logo} alt="logo" priority quality={100} />
             </div>
-            <nav className="flex space-x-16 text-sm font-bold max-sm:hidden">
+            <nav className="flex space-x-10 text-sm font-bold max-sm:hidden">
               <Link href="#pharmacies">For Patients</Link>
               <Link href="#patients">For Providers</Link>
+              <Link href="/partner-portal">Partner Portal</Link>
               
             </nav>
           </div>
@@ -50,7 +51,10 @@ export default function Nav() {
               </Link>
               <Link href="#patients" onClick={() => setIsOpen(false)}>
                 For Providers
-              </Link>    
+              </Link>
+              <Link href="/partner-portal" onClick={() => setIsOpen(false)}>
+                Partner Portal
+              </Link>
             </div>
           </nav>
         </div>

@@ -57,11 +57,36 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
   const [data, setData]           = useState<DashboardData | null>(null);
+  // True until we've found out whether the visitor already has a portal
+  // session. Stops the password form flashing up for signed-in partners.
+  const [checking, setChecking]   = useState(true);
 
   const dailyRef      = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
   const marginRef      = useRef<HTMLCanvasElement>(null);
   const marginChartRef = useRef<unknown>(null);
+
+  // Try the portal session first. The cookie rides along automatically, and
+  // the API decides whether this user may see this facility.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/dashboard/${params.slug}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!cancelled && res.ok) setData(await res.json());
+      } catch {
+        // No session, or not authorised — fall through to the password form.
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -180,6 +205,14 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     });
   }
 
+  if (checking) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-400">Loading…</p>
+      </main>
+    );
+  }
+
   if (!data) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -188,6 +221,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
             <div className="mb-3 text-3xl">💊</div>
             <h1 className="text-lg font-medium text-gray-900">AfyaNzima Partner Portal</h1>
             <p className="mt-1 text-sm text-gray-500">Enter your facility password to view your performance dashboard.</p>
+            <p className="mt-3 text-xs text-gray-400">
+              Have a portal account?{' '}
+              <a href="/partner-portal" className="underline">Sign in with your email</a>
+            </p>
           </div>
           <form onSubmit={login} className="space-y-3">
             <input

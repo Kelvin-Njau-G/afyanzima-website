@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import https from 'https';
 import { checkDashboardPassword } from '@/lib/facilities';
+import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
+import { portalDb } from '@/lib/portal/db';
 
 const BASE = process.env.METABASE_URL!.replace(/\/$/, '');
 const MB_USER = process.env.METABASE_USER!;
@@ -33,9 +35,29 @@ function mbFetch(path: string, body?: object, token?: string): Promise<unknown> 
 }
 
 export async function POST(req: NextRequest) {
-  const { password } = await req.json();
-  if (!checkDashboardPassword(password)) {
-    return NextResponse.json({ error: 'Incorrect password' }, { status: 401 });
+  // The cross-facility overview is admin-only: it aggregates every partner's
+  // numbers, so no partner account should ever reach it.
+  const body = await req.json().catch(() => ({}));
+  const password: string | undefined = body?.password;
+
+  let authorised = false;
+
+  const session = await readSessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (session) {
+    const { data: user } = await portalDb
+      .from('portal_users')
+      .select('role, is_active')
+      .eq('id', session.sub)
+      .maybeSingle();
+    authorised = !!user && user.is_active && user.role === 'admin';
+  }
+
+  if (!authorised && process.env.PORTAL_LEGACY_PASSWORDS !== 'false' && password) {
+    authorised = checkDashboardPassword(password);
+  }
+
+  if (!authorised) {
+    return NextResponse.json({ error: 'Not authorised' }, { status: 401 });
   }
 
   const today = new Date();
