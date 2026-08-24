@@ -47,7 +47,7 @@ export const pharmacies = [
     location: 'Kayole, Mihango stage',
     phoneNumber: '+25474177959',
     hours: '8:00am - 10:00pm',
-    insurance:,
+    insurance:'',
     directions: 'https://maps.app.goo.gl/t7VJbr26JcgV4rR1A',
   },
   {
