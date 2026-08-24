@@ -3,8 +3,9 @@ import Nimoli from '@/images/nimoli.png';
 import PreciousLife from '@/images/precious-life.png';
 import Provide from '@/images/provide.png';
 import Sinai from '@/images/sinai.png';
-import WellLiving from '@/images/well-living.png';
+import WellLiving from '@/images/well-living-updated.jpeg';
 import Zackii from '@/images/zackii.png';
+import Healmerc from '@/images/healmerc.jpeg';
 
 export const facilities = [
   {
@@ -41,15 +42,6 @@ export const facilities = [
 
 export const pharmacies = [
   {
-    name: 'Nimoli Medical Services',
-    image: Nimoli,
-    location: 'Kasarani, Sunton Stage',
-    phoneNumber: '+254722829585',
-    hours: '24/7',
-    insurance: 'SHA',
-    directions: 'https://maps.app.goo.gl/2HkuNQsh2NZQGNyTA',
-  },
-  {
     name: 'Well Living Medical Clinic',
     image: WellLiving,
     location: 'Kayole, Mihango stage',
@@ -59,12 +51,43 @@ export const pharmacies = [
     directions: 'https://maps.app.goo.gl/t7VJbr26JcgV4rR1A',
   },
   {
-    name: 'City Star Hospital',
+    name: 'Healmerc Pharmacy',
+    image: Healmerc,
+    location: 'Chokaa, Kangundo Road',
+    phoneNumber: '+254758921513',
+    hours: '8:00am - 11:00pm',
+    directions: 'https://maps.app.goo.gl/2FJzUtZUDHdKKo9X7?g_st=ac',
+  },
+  {
+    name: 'Qaalane Pharmacy and Medical Centre',
     image: Artboard,
-    location: 'South C, Ole Shapara Road',
-    phoneNumber: '+254722786443',
+    location: 'Eastleigh, 2nd Street',
+    phoneNumber: '+254716911038',
     hours: '24/7',
-    insurance: 'SHA, Britam, Madison',
-    directions: 'https://maps.app.goo.gl/T611BvjM16hHrdUs9',
+    directions: 'https://maps.app.goo.gl/CjZ9p7N6vL1zGvpt9',
+  },
+  {
+    name: 'Libken Medical Centre Limited',
+    image: Artboard,
+    location: 'Eastleigh, Second Avenue',
+    phoneNumber: '+254722712850',
+    hours: '24/7',
+    directions: 'https://maps.app.goo.gl/vXQSYzkgzYCuWPRk8',
+  },
+  {
+    name: 'Etham Chemists',
+    image: Artboard,
+    location: 'Umoja 1, Mutindwa',
+    phoneNumber: '+254720351924',
+    hours: '8:00am - 11:00pm',
+    directions: 'https://maps.app.goo.gl/MaFm7yhw15PMdzjF8',
+  },
+  {
+    name: 'Ndipo Pharm Pharmacy',
+    image: Artboard,
+    location: 'Mlolongo',
+    phoneNumber: '+254725799034',
+    hours: '8:00am - 11:00pm',
+    directions: 'https://maps.app.goo.gl/Av8PzM7wNNRUeBam9',
   },
 ];

@@ -12,16 +12,30 @@ const pois: Poi[] = [
     location: { lat: -1.2638497181444144, lng: 36.926983666913614 },
     title: 'Well Living Medical Clinic',
   },
-  { key: 'nimoli', 
-    location: { lat: -1.229291893580319, lng: 36.920567542328996 }, 
-    title: 'Nimoli Medical Services' 
+  { key: 'healmerc', 
+    location: { lat: -1.250372, lng: 36.952885 }, 
+    title: 'Healmerc Pharmacy' 
   },
   {
-    key: 'citystar',
-    location: { lat: -1.3157726525231392, lng: 36.827335722466515 },
-    title: 'City Star Hospital',
+    key: 'qaalane',
+    location: { lat: -1.2787967, lng: 36.8490987 },
+    title: 'Qaalane Pharmacy and Medical Centre',
   },
-  
+  {
+    key: 'libken',
+    location: { lat: -1.2778697, lng: 36.8490787 },
+    title: 'Libken Medical Centre Limited',
+  },  
+  {
+    key: 'etham',
+    location: { lat: -1.2775494, lng: 36.8855136 },
+    title: 'Etham Chemists',
+  },
+  {
+    key: 'ndipo',
+    location: { lat: -1.3927459, lng: 36.9386413 },
+    title: 'Ndipo Pharm Pharmacy',
+  },
 ];
 
 function PoiMarker({ poi }: { poi: Poi }) {
