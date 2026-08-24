@@ -34,11 +34,11 @@ export default function Home() {
           <div className="space-y-8 sm:w-[41.375rem] sm:space-y-[3.375rem]">
             <div className="space-y-8 tracking-[-0.06em] max-sm:text-center sm:space-y-[3.75rem]">
               <div className="flex-col items-center space-y-8 max-sm:flex">
-                <h1 className="text-[2.5rem]/[3rem] font-bold text-[#066DB7] sm:text-5xl">Unlock your in-clinic pharmacy&apos;s potential.</h1>
+                <h1 className="text-[2.5rem]/[3rem] font-bold text-[#066DB7] sm:text-5xl">Unlock your pharmacy&apos;s potential.</h1>
                 <div className="h-[0.3125rem] w-[5.6875rem] bg-[#066DB7]" />
               </div>
               <h1 className="text-3xl font-semibold text-[#E63524]">
-                AfyaNzima partners with primary healthcare clinics to manage on-site pharmacies, ensuring every patient leaves with their full prescription in hand.
+                AfyaNzima partners with primary healthcare facilities to manage on-site pharmacies, ensuring every patient leaves with their full prescription in hand.
               </h1>
               {/* --- UPDATED SECTION STARTS HERE --- */}
               <div className="grid grid-cols-1 gap-10 sm:grid-cols-2">
