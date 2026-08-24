@@ -399,29 +399,39 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           );
         })()}
 
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Top 20 products this month</p>
-        <div className="mb-6 overflow-x-auto rounded-xl border border-gray-100 bg-white">
-          <table className="w-full text-sm">
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
+          Total sales by product this month
+          {data.commercial.topProducts.length > 0 && (
+            <span className="ml-2 normal-case tracking-normal text-gray-400">
+              ({data.commercial.topProducts.length} SKUs)
+            </span>
+          )}
+        </p>
+        {/* Scrolls within the card, like Daily sales by product above.
+            overscroll-contain stops the page scrolling once the list ends. */}
+        <div className="mb-6 max-h-[400px] overflow-auto overscroll-contain rounded-xl border border-gray-100 bg-white">
+          <table className="w-full text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
-              <tr className="border-b border-gray-100 text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
-                <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3 text-right">Units sold</th>
-                <th className="px-4 py-3 text-right">Revenue (KSh)</th>
-                <th className="px-4 py-3 text-right">Margin</th>
+              <tr className="text-left text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                {/* Sticky header needs its own background, or rows show through as they scroll under it. */}
+                <th className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-3">#</th>
+                <th className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-3">Product</th>
+                <th className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-3 text-right">Units sold</th>
+                <th className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-3 text-right">Revenue (KSh)</th>
+                <th className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-3 text-right">Margin</th>
               </tr>
             </thead>
             <tbody>
               {data.commercial.topProducts.map((p, i) => (
-                <tr key={p.sku} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
-                  <td className="px-4 py-2">
+                <tr key={`${p.sku}-${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                  <td className="border-b border-gray-50 px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="border-b border-gray-50 px-4 py-2">
                     <p className="font-medium text-gray-800">{p.product}</p>
                     <p className="text-[11px] text-gray-400">{p.sku}</p>
                   </td>
-                  <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
-                  <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="border-b border-gray-50 px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
+                  <td className="border-b border-gray-50 px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
+                  <td className="border-b border-gray-50 px-4 py-2 text-right">
                     <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
                       {p.margin}%
                     </span>

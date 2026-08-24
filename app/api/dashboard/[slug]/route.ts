@@ -78,7 +78,12 @@ function desiredColRank(col: MbCol): number {
   return 999; // unknown columns go to the end
 }
 
-function topProductsQuery(facilityName: string, monthStart: string, monthEnd: string, limit = 20) {
+/**
+ * Products sold in the month, aggregated by product + SKU, highest revenue
+ * first. `limit` caps the row count — 2000 is Metabase's ceiling for a single
+ * /api/dataset response, so it effectively means "everything".
+ */
+function topProductsQuery(facilityName: string, monthStart: string, monthEnd: string, limit = 2000) {
   return {
     database: 5,
     type: 'query',
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/card/2262/query', {}, token),   // 0: daily revenue per facility
     mbFetch('/api/card/2536/query', {}, token),   // 1: discounts / net revenue
     mbFetch('/api/card/2410/query', {}, token),   // 2: gross margin %
-    mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 20), token), // 3: top 20 products
+    mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 2000), token), // 3: all products sold this month
     mbFetch('/api/card/2507/query', {}, token),   // 4: inventory value by class
     mbFetch('/api/card/1661/query', {}, token),   // 5: monthly restock value
     mbFetch('/api/card/3193/query', {}, token),   // 6: daily COGS & profit
@@ -251,13 +256,17 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const projected   = avgDaily * daysInMonth;
 
   // ── Top 20 products ──────────────────────────────────────────────────────────
-  const topProducts = topProdRes.data.rows.map(row => ({
-    product: row[0] as string,
-    sku:     row[1] as string,
-    qty:     Math.round((row[2] as number) || 0),
-    revenue: Math.round((row[3] as number) || 0),
-    margin:  (row[3] as number) > 0 ? Math.round(((row[4] as number) / (row[3] as number)) * 1000) / 10 : 0,
-  }));
+  // Every product sold this month, not just the top handful. Rows with no
+  // revenue are dropped so the count in the heading reflects actual sales.
+  const topProducts = topProdRes.data.rows
+    .filter(row => ((row[3] as number) || 0) > 0)
+    .map(row => ({
+      product: row[0] as string,
+      sku:     row[1] as string,
+      qty:     Math.round((row[2] as number) || 0),
+      revenue: Math.round((row[3] as number) || 0),
+      margin:  (row[3] as number) > 0 ? Math.round(((row[4] as number) / (row[3] as number)) * 1000) / 10 : 0,
+    }));
 
   // ── Inventory value ──────────────────────────────────────────────────────────
   const invRows = invByClassRes.data.rows.filter(r => r[0] === facilityName);
