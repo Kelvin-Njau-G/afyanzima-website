@@ -1,8 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import DashboardFilters, { type Filters } from '@/components/dashboard-filters';
 
-type DailyEntry = { date: string; label: string; revenue: number; cogs: number; profit: number };
+type DailyEntry = {
+  date: string; label: string; revenue: number; cogs: number; profit: number; discount: number;
+};
+
+type ColumnRoles = {
+  date: number; product: number; staff: number;
+  qty: number; discount: number; revenue: number; profit: number;
+};
+
+type ProductRow = { product: string; sku: string; qty: number; revenue: number; margin: number };
 
 type DashboardData = {
   facility: string;
@@ -16,9 +26,10 @@ type DashboardData = {
     avgDaily: number; projected: number; daysInMonth: number;
     daily: DailyEntry[];
   };
-  commercial: {
-    topProducts: Array<{ product: string; sku: string; qty: number; revenue: number; margin: number }>;
-  };
+  commercial: { topProducts: ProductRow[] };
+  productSku: Record<string, string>;
+  columnRoles: ColumnRoles;
+  reconciliation: { cardGross: number; dailyGross: number; matches: boolean };
   inventory: { inventoryValue: number; monthlyRestockValue: number };
   fullProductTable: Array<{
     product: string; sku: string; buyingPrice: number | null;
@@ -60,6 +71,8 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   // True until we've found out whether the visitor already has a portal
   // session. Stops the password form flashing up for signed-in partners.
   const [checking, setChecking]   = useState(true);
+  const [filters, setFilters]     = useState<Filters | null>(null);
+  const [chartReady, setChartReady] = useState(false);
 
   const dailyRef      = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
@@ -112,13 +125,13 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     if (!data) return;
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-    script.onload = () => { renderDailyChart(data); renderMarginChart(data); };
+    script.onload = () => setChartReady(true);
     document.head.appendChild(script);
     return () => { document.head.removeChild(script); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  function renderDailyChart(d: DashboardData) {
+  function renderDailyChart(series: DailyEntry[], avgDaily: number) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Chart = (window as any).Chart;
     if (!Chart || !dailyRef.current) return;
@@ -129,15 +142,15 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     const today     = new Date().toISOString().slice(0, 10);
     dailyChartRef.current = new Chart(dailyRef.current, {
       data: {
-        labels: d.metrics.daily.map(e => e.label),
+        labels: series.map(e => e.label),
         datasets: [
           {
-            type: 'bar', label: 'Sales', data: d.metrics.daily.map(e => e.revenue),
-            backgroundColor: d.dates.map(date => date >= today ? (isDark ? '#5dcaa5' : '#9fe1cb') : '#1d9e75'),
+            type: 'bar', label: 'Sales', data: series.map(e => e.revenue),
+            backgroundColor: series.map(e => e.date >= today ? (isDark ? '#5dcaa5' : '#9fe1cb') : '#1d9e75'),
             borderRadius: 4, order: 2,
           },
           {
-            type: 'line', label: 'Average', data: Array(d.metrics.daily.length).fill(d.metrics.avgDaily),
+            type: 'line', label: 'Average', data: Array(series.length).fill(avgDaily),
             borderColor: '#ba7517', borderDash: [5, 4], borderWidth: 2, pointRadius: 0, tension: 0, order: 1,
           },
         ],
@@ -156,7 +169,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     });
   }
 
-  function renderMarginChart(d: DashboardData) {
+  function renderMarginChart(series: DailyEntry[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Chart = (window as any).Chart;
     if (!Chart || !marginRef.current) return;
@@ -167,18 +180,18 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     marginChartRef.current = new Chart(marginRef.current, {
       type: 'bar',
       data: {
-        labels: d.metrics.daily.map(e => e.label),
+        labels: series.map(e => e.label),
         datasets: [
           {
             label: 'COGS',
-            data: d.metrics.daily.map(e => e.cogs),
+            data: series.map(e => e.cogs),
             backgroundColor: isDark ? '#374151' : '#d1d5db',
             stack: 'daily',
             borderRadius: 0,
           },
           {
             label: 'Gross profit',
-            data: d.metrics.daily.map(e => e.profit),
+            data: series.map(e => e.profit),
             backgroundColor: '#1d9e75',
             stack: 'daily',
             borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
@@ -204,6 +217,157 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       },
     });
   }
+
+
+  // ── Derived, filtered view ───────────────────────────────────────────────────
+  // The whole current month is already in the browser at daily grain, so every
+  // filter below is a pure recomputation — no refetch, no spinner.
+
+  const monthBounds = useMemo(() => {
+    const dates = data?.metrics.daily.map((d) => d.date) ?? [];
+    if (!dates.length) return null;
+    return { start: dates[0], end: dates[dates.length - 1] };
+  }, [data]);
+
+  // Initialise the range to the full month once the data lands.
+  useEffect(() => {
+    if (monthBounds && !filters) {
+      setFilters({ from: monthBounds.start, to: monthBounds.end, product: '' });
+    }
+  }, [monthBounds, filters]);
+
+  const roles = data?.columnRoles;
+  const dbpRows = data?.dailySalesByProduct.rows ?? [];
+
+  /** Every product name that appears this month, for the search box. */
+  const productNames = useMemo(() => {
+    if (!roles || roles.product < 0) return [];
+    const set = new Set<string>();
+    for (const row of dbpRows) {
+      const name = row[roles.product];
+      if (typeof name === 'string' && name) set.add(name);
+    }
+    return Array.from(set).sort();
+  }, [dbpRows, roles]);
+
+  const inRange = (d: unknown) => {
+    if (!filters || typeof d !== 'string') return true;
+    const day = d.slice(0, 10);
+    return day >= filters.from && day <= filters.to;
+  };
+
+  /** Daily-sales-by-product rows after both filters. */
+  const filteredDbpRows = useMemo(() => {
+    if (!roles || !filters) return dbpRows;
+    return dbpRows.filter((row) => {
+      if (roles.date >= 0 && !inRange(row[roles.date])) return false;
+      if (filters.product && roles.product >= 0 && row[roles.product] !== filters.product) {
+        return false;
+      }
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbpRows, roles, filters]);
+
+  const isFiltered =
+    !!filters &&
+    !!monthBounds &&
+    (filters.from !== monthBounds.start ||
+      filters.to !== monthBounds.end ||
+      !!filters.product);
+
+  /** Daily entries inside the range, for the charts and the scorecards. */
+  const filteredDaily = useMemo(() => {
+    const all = data?.metrics.daily ?? [];
+    if (!filters) return all;
+    return all.filter((d) => d.date >= filters.from && d.date <= filters.to);
+  }, [data, filters]);
+
+  /**
+   * Scorecard figures.
+   *
+   * Unfiltered, these are the month totals straight from Metabase cards 2536
+   * and 2410 — the numbers this dashboard has always shown. Those cards are
+   * aggregated per month and can't be sliced, so as soon as a filter is on we
+   * total the daily series instead and label it as such.
+   */
+  const view = useMemo(() => {
+    const m = data?.metrics;
+    if (!m) return null;
+    if (!isFiltered) {
+      return {
+        gross: m.gross, net: m.net, discountAmt: m.discountAmt, discountPct: m.discountPct,
+        marginPct: m.marginPct, netMarginPct: m.netMarginPct,
+        grossProfit: m.grossProfit, netProfit: m.netProfit,
+        avgDaily: m.avgDaily, projected: m.projected, computed: false,
+      };
+    }
+    const gross       = filteredDaily.reduce((a, d) => a + d.revenue, 0);
+    const grossProfit = filteredDaily.reduce((a, d) => a + d.profit, 0);
+    const discountAmt = filteredDaily.reduce((a, d) => a + d.discount, 0);
+    const net         = gross - discountAmt;
+    const marginPct   = gross ? Math.round((grossProfit / gross) * 1000) / 10 : 0;
+    const days        = filteredDaily.filter((d) => d.revenue > 0).length;
+    return {
+      gross, net, discountAmt,
+      discountPct: gross ? Math.round((discountAmt / gross) * 1000) / 10 : 0,
+      marginPct,
+      netMarginPct: gross ? Math.round((net / gross) * marginPct * 10) / 10 : 0,
+      grossProfit,
+      netProfit: grossProfit - discountAmt,
+      avgDaily: days ? Math.round(gross / days) : 0,
+      projected: m.projected,
+      computed: true,
+    };
+  }, [data, filteredDaily, isFiltered]);
+
+  /**
+   * Product table, rebuilt from the filtered rows when a filter is on.
+   * Card 3191 carries the product name but not the SKU, so SKUs come from the
+   * lookup the server sends alongside.
+   */
+  const productRows = useMemo((): ProductRow[] => {
+    if (!data) return [];
+    if (!isFiltered || !roles || roles.product < 0) return data.commercial.topProducts;
+
+    const acc = new Map<string, { qty: number; revenue: number; profit: number }>();
+    for (const row of filteredDbpRows) {
+      const name = row[roles.product];
+      if (typeof name !== 'string' || !name) continue;
+      const cur = acc.get(name) ?? { qty: 0, revenue: 0, profit: 0 };
+      if (roles.qty     >= 0) cur.qty     += (row[roles.qty]     as number) || 0;
+      if (roles.revenue >= 0) cur.revenue += (row[roles.revenue] as number) || 0;
+      if (roles.profit  >= 0) cur.profit  += (row[roles.profit]  as number) || 0;
+      acc.set(name, cur);
+    }
+
+    return Array.from(acc.entries())
+      .map(([product, v]) => ({
+        product,
+        sku: data.productSku[product] ?? '',
+        qty: Math.round(v.qty),
+        revenue: Math.round(v.revenue),
+        margin: v.revenue > 0 ? Math.round((v.profit / v.revenue) * 1000) / 10 : 0,
+      }))
+      .filter((p) => p.revenue > 0)
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [data, filteredDbpRows, isFiltered, roles]);
+
+  // Redraw the charts whenever the range changes. Chart.js loads once; this
+  // only rebuilds the two canvases, which is cheap enough to feel instant.
+  useEffect(() => {
+    if (!chartReady || !view) return;
+    renderDailyChart(filteredDaily, view.avgDaily);
+    renderMarginChart(filteredDaily);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartReady, filteredDaily, view]);
+
+  /** The Qaalane catalogue has no dates, so only the product filter applies. */
+  const filteredCatalogue = useMemo(() => {
+    const all = data?.fullProductTable ?? [];
+    if (!filters?.product) return all;
+    return all.filter((p) => p.product === filters.product);
+  }, [data, filters]);
 
   if (checking) {
     return (
@@ -243,7 +407,13 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     );
   }
 
-  const m = data.metrics;
+  // `m` is the filtered view when a filter is on, and the untouched month
+  // totals otherwise. `raw` keeps the month-only figures (projection, days in
+  // month) that don't make sense to recompute for a partial range.
+  const raw = data.metrics;
+  const m = view ?? {
+    ...raw, computed: false,
+  };
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 pb-16 pt-8">
@@ -260,10 +430,32 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           </span>
         </div>
 
+        {/* Filters apply to every section below. */}
+        {filters && monthBounds && (
+          <DashboardFilters
+            monthStart={monthBounds.start}
+            monthEnd={monthBounds.end}
+            products={productNames}
+            filters={filters}
+            onChange={setFilters}
+            resultCount={filteredDbpRows.length}
+          />
+        )}
+
         {/* ── COMMERCIAL ──────────────────────────────────────── */}
         <SectionHeader title="Commercial" />
 
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Month-to-date summary</p>
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
+          {isFiltered ? 'Selected period summary' : 'Month-to-date summary'}
+        </p>
+        {m.computed && (
+          <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
+            Totalled from daily figures for the selected range. The unfiltered view uses
+            AfyaNzima&apos;s monthly totals, which are calculated separately
+            {!data.reconciliation.matches && ' — and the two currently differ for this month, so treat filtered figures as indicative'}
+            .
+          </p>
+        )}
         <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           {[
             { label: 'Gross revenue',    value: fmt(m.gross),       sub: 'KSh · before discounts' },
@@ -288,12 +480,12 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           <div className="rounded-lg bg-gray-100 p-3.5 border-l-[3px] border-green-600">
             <p className="mb-1 text-[11px] text-gray-500">Projected monthly revenue</p>
             <p className="text-xl font-medium text-green-700">{fmt(m.projected)}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · avg × {m.daysInMonth} days</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · avg × {raw.daysInMonth} days</p>
           </div>
         </div>
 
         {/* Daily sales chart */}
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales — {data.monthLabel}</p>
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales — {isFiltered ? `${filters?.from} to ${filters?.to}` : data.monthLabel}</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
           <div className="relative h-56 w-full">
             <canvas ref={dailyRef} role="img" aria-label="Bar chart of daily pharmacy sales this month." />
@@ -318,7 +510,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         </div>
 
         {/* Daily Sales by Product table — sticky header + first 2 columns, scrolls within the card */}
-        {data.dailySalesByProduct.rows.length > 0 && (() => {
+        {filteredDbpRows.length > 0 && (() => {
           // Fixed px widths for each column position (Cart Time, Product, Pack, …)
           const COL_W = [80, 160, 70, 90, 90, 70, 100, 90, 80, 70, 110];
           const col1Left = COL_W[0]; // left offset for the second sticky column
@@ -364,7 +556,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                   </thead>
 
                   <tbody>
-                    {data.dailySalesByProduct.rows.map((row, i) => {
+                    {filteredDbpRows.map((row, i) => {
                       const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50';
                       return (
                         <tr key={i} className={`border-b border-gray-50 ${rowBg}`}>
@@ -401,9 +593,9 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
           Total sales by product this month
-          {data.commercial.topProducts.length > 0 && (
+          {productRows.length > 0 && (
             <span className="ml-2 normal-case tracking-normal text-gray-400">
-              ({data.commercial.topProducts.length} SKUs)
+              ({productRows.length} SKUs)
             </span>
           )}
         </p>
@@ -422,7 +614,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
               </tr>
             </thead>
             <tbody>
-              {data.commercial.topProducts.map((p, i) => (
+              {productRows.map((p, i) => (
                 <tr key={`${p.sku}-${i}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                   <td className="border-b border-gray-50 px-4 py-2 text-gray-400">{i + 1}</td>
                   <td className="border-b border-gray-50 px-4 py-2">
@@ -459,11 +651,11 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         </div>
 
         {/* ── PRODUCT CATALOGUE (Qaalane only) ─────────────── */}
-        {data.fullProductTable.length > 0 && (
+        {filteredCatalogue.length > 0 && (
           <>
             <SectionHeader title="Product catalogue" />
             <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
-              All products sold this month ({data.fullProductTable.length} SKUs)
+              All products sold this month ({filteredCatalogue.length} SKUs)
             </p>
             <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
               <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: '680px' }}>
@@ -486,7 +678,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
                   </tr>
                 </thead>
                 <tbody>
-                  {data.fullProductTable.map((p, i) => (
+                  {filteredCatalogue.map((p, i) => (
                     <tr key={p.sku} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                       <td className="px-4 py-2">
                         <p className="truncate font-medium text-gray-800">{p.product}</p>

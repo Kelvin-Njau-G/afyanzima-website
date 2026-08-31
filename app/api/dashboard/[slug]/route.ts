@@ -58,6 +58,7 @@ function simplifyType(baseType: string): 'number' | 'date' | 'text' {
 const COL_ORDER_KEYWORDS: string[][] = [
   ['cart_time', 'cart time', 'minute'],           // Cart_Time Minute
   ['product'],                                      // Product
+  ['staff', 'served_by', 'cashier', 'attendant'],   // Staff
   ['pack'],                                         // Pack
   // Unit_Purchase_Price must be matched BEFORE Unit_Price to avoid substring clash
   ['unit_purchase', 'purchase_price', 'purchase'],  // Unit_Purchase_Price
@@ -247,6 +248,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       revenue,
       cogs:   Math.max(0, cogs),
       profit: Math.max(0, profit),
+      // Filled in below, once card 3191 has been parsed.
+      discount: 0,
     };
   });
 
@@ -314,6 +317,48 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     ),
   };
 
+  // ── Column roles for client-side filtering ──────────────────────────────────
+  // The client re-aggregates these rows when a date range or product filter is
+  // active, so it needs to know which position holds what. Working this out
+  // here (where the Metabase column metadata is available) keeps the client
+  // from having to guess by matching header text.
+  const roleOf = (...kw: string[]) => {
+    const abs = colIdx(dbpCols, ...kw);
+    return abs < 0 ? -1 : includedCols.findIndex(({ i }) => i === abs);
+  };
+  const columnRoles = {
+    date:     roleOf('cart_time', 'date', 'day'),
+    product:  roleOf('product'),
+    staff:    roleOf('staff', 'served_by', 'cashier', 'attendant'),
+    qty:      roleOf('quantity', 'qty'),
+    discount: roleOf('discount'),
+    revenue:  roleOf('sale_amount', 'sale amount', 'revenue'),
+    profit:   roleOf('profit'),
+  };
+
+  // ── Per-day discount (from card 3191) ───────────────────────────────────────
+  // The discount and net-revenue scorecards come from card 2536, which is
+  // aggregated per month and so can't be sliced to a date range. Summing the
+  // per-row discounts here gives the client a daily series it can total over
+  // whatever range the user picks.
+  const dbpDiscIdx = colIdx(dbpCols, 'discount');
+  const dailyDiscountMap: Record<string, number> = {};
+  if (dbpDiscIdx >= 0 && dbpDateIdx >= 0) {
+    for (const row of filteredProdRows) {
+      const rawD = row[dbpDateIdx];
+      const d = typeof rawD === 'string' ? rawD.slice(0, 10) : '';
+      if (!d) continue;
+      dailyDiscountMap[d] = (dailyDiscountMap[d] ?? 0) + ((row[dbpDiscIdx] as number) || 0);
+    }
+  }
+
+  // Product → SKU lookup, so a client-side rebuild of the product table can
+  // still show SKUs (card 3191 carries the product name but not the SKU).
+  const productSku: Record<string, string> = {};
+  for (const p of topProducts) {
+    if (p.product && p.sku) productSku[p.product] = p.sku;
+  }
+
   // ── Full product table (Qaalane only) ────────────────────────────────────────
   let fullProductTable: Array<{
     product: string; sku: string; buyingPrice: number | null;
@@ -347,6 +392,20 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       .sort((a, b) => b.revenue - a.revenue);
   }
 
+  // Attach the per-day discounts now that card 3191 has been parsed.
+  for (const d of daily) d.discount = Math.round(dailyDiscountMap[d.date] ?? 0);
+
+  // Whether the daily series adds up to the month totals from cards 2536/2410.
+  // The two come from different Metabase cards, so they can legitimately differ
+  // if those cards apply filters this route doesn't know about. The client uses
+  // this to warn rather than silently show numbers that don't reconcile.
+  const dailyGrossTotal = daily.reduce((s2, d) => s2 + d.revenue, 0);
+  const reconciliation = {
+    cardGross:  gross,
+    dailyGross: Math.round(dailyGrossTotal),
+    matches:    gross === 0 ? true : Math.abs(dailyGrossTotal - gross) / gross < 0.01,
+  };
+
   return NextResponse.json({
     facility: facilityName,
     monthLabel,
@@ -362,6 +421,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       grossProfit, netProfit, avgDaily, projected, daysInMonth, daily,
     },
     commercial: { topProducts },
+    productSku,
+    columnRoles,
+    reconciliation,
     inventory:  { inventoryValue, monthlyRestockValue },
     fullProductTable: isQaalane ? fullProductTable : [],
     dailySalesByProduct,
