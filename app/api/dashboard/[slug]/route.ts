@@ -395,17 +395,6 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // Attach the per-day discounts now that card 3191 has been parsed.
   for (const d of daily) d.discount = Math.round(dailyDiscountMap[d.date] ?? 0);
 
-  // Whether the daily series adds up to the month totals from cards 2536/2410.
-  // The two come from different Metabase cards, so they can legitimately differ
-  // if those cards apply filters this route doesn't know about. The client uses
-  // this to warn rather than silently show numbers that don't reconcile.
-  const dailyGrossTotal = daily.reduce((s2, d) => s2 + d.revenue, 0);
-  const reconciliation = {
-    cardGross:  gross,
-    dailyGross: Math.round(dailyGrossTotal),
-    matches:    gross === 0 ? true : Math.abs(dailyGrossTotal - gross) / gross < 0.01,
-  };
-
   return NextResponse.json({
     facility: facilityName,
     monthLabel,
@@ -423,7 +412,6 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     commercial: { topProducts },
     productSku,
     columnRoles,
-    reconciliation,
     inventory:  { inventoryValue, monthlyRestockValue },
     fullProductTable: isQaalane ? fullProductTable : [],
     dailySalesByProduct,

@@ -29,7 +29,6 @@ type DashboardData = {
   commercial: { topProducts: ProductRow[] };
   productSku: Record<string, string>;
   columnRoles: ColumnRoles;
-  reconciliation: { cardGross: number; dailyGross: number; matches: boolean };
   inventory: { inventoryValue: number; monthlyRestockValue: number };
   fullProductTable: Array<{
     product: string; sku: string; buyingPrice: number | null;
@@ -276,12 +275,54 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       filters.to !== monthBounds.end ||
       !!filters.product);
 
-  /** Daily entries inside the range, for the charts and the scorecards. */
-  const filteredDaily = useMemo(() => {
+  /**
+   * Daily entries driving the charts and scorecards.
+   *
+   * With no product filter these come from the facility-wide cards (2262 for
+   * revenue, 3193 for profit/COGS). Those have no product dimension, so once a
+   * product is picked the series is rebuilt from card 3191 instead — the only
+   * source carrying date AND product together. Everything downstream
+   * (scorecards, both charts, averages) follows automatically.
+   */
+  const filteredDaily = useMemo((): DailyEntry[] => {
     const all = data?.metrics.daily ?? [];
     if (!filters) return all;
-    return all.filter((d) => d.date >= filters.from && d.date <= filters.to);
-  }, [data, filters]);
+
+    const inWindow = all.filter((d) => d.date >= filters.from && d.date <= filters.to);
+    if (!filters.product || !roles || roles.date < 0) return inWindow;
+
+    // Day labels are already formatted on the facility-wide series; reuse them
+    // so the chart axis reads identically whichever source is in play.
+    const labelFor = new Map(all.map((d) => [d.date, d.label]));
+
+    const byDate = new Map<string, { revenue: number; profit: number; discount: number }>();
+    for (const row of filteredDbpRows) {
+      const rawD = row[roles.date];
+      const day = typeof rawD === 'string' ? rawD.slice(0, 10) : '';
+      if (!day) continue;
+      const cur = byDate.get(day) ?? { revenue: 0, profit: 0, discount: 0 };
+      if (roles.revenue  >= 0) cur.revenue  += (row[roles.revenue]  as number) || 0;
+      if (roles.profit   >= 0) cur.profit   += (row[roles.profit]   as number) || 0;
+      if (roles.discount >= 0) cur.discount += (row[roles.discount] as number) || 0;
+      byDate.set(day, cur);
+    }
+
+    // Keep every day in the window, including zero-sale days, so the chart
+    // doesn't silently compress its x-axis when a product sells intermittently.
+    return inWindow.map((d) => {
+      const v = byDate.get(d.date) ?? { revenue: 0, profit: 0, discount: 0 };
+      const revenue = Math.round(v.revenue);
+      const profit  = Math.round(v.profit);
+      return {
+        date: d.date,
+        label: labelFor.get(d.date) ?? d.date,
+        revenue,
+        profit: Math.max(0, profit),
+        cogs: Math.max(0, revenue - profit),
+        discount: Math.round(v.discount),
+      };
+    });
+  }, [data, filters, filteredDbpRows, roles]);
 
   /**
    * Scorecard figures.
@@ -316,7 +357,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       grossProfit,
       netProfit: grossProfit - discountAmt,
       avgDaily: days ? Math.round(gross / days) : 0,
-      projected: m.projected,
+      projected: days ? Math.round((gross / days) * m.daysInMonth) : 0,
       computed: true,
     };
   }, [data, filteredDaily, isFiltered]);
@@ -448,14 +489,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
           {isFiltered ? 'Selected period summary' : 'Month-to-date summary'}
         </p>
-        {m.computed && (
-          <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
-            Totalled from daily figures for the selected range. The unfiltered view uses
-            AfyaNzima&apos;s monthly totals, which are calculated separately
-            {!data.reconciliation.matches && ' — and the two currently differ for this month, so treat filtered figures as indicative'}
-            .
-          </p>
-        )}
+
         <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           {[
             { label: 'Gross revenue',    value: fmt(m.gross),       sub: 'KSh · before discounts' },
@@ -636,6 +670,16 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
 
         {/* ── INVENTORY ──────────────────────────────────────── */}
         <SectionHeader title="Inventory" />
+
+        {/* Inventory comes from stock-level cards that carry neither a date nor
+            a product breakdown, so these two can't follow the filters. Say so
+            rather than leave unfiltered figures sitting beside filtered ones. */}
+        {isFiltered && (
+          <p className="mb-2.5 text-[11px] text-gray-400">
+            Not affected by the filters above — these are current stock figures for the
+            whole facility.
+          </p>
+        )}
 
         <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <div className="rounded-lg bg-gray-100 p-3.5">
