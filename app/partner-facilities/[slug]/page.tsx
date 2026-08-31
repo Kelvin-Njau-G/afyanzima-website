@@ -81,6 +81,67 @@ function formatCell(value: string | number | null, colType: string, header: stri
   return String(value);
 }
 
+
+/** Y-axis tick label. Below 1,000 the "k" form collapses everything to "0k". */
+function axisTick(v: number): string {
+  if (Math.abs(v) >= 1000) {
+    const k = v / 1000;
+    return `KSh ${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+  }
+  return `KSh ${fmt(v)}`;
+}
+
+/**
+ * Chart.js plugin drawing each bar's total above it.
+ *
+ * Written inline rather than pulling in chartjs-plugin-datalabels: that plugin
+ * labels every dataset, so on the stacked chart it would print COGS and profit
+ * separately instead of the one combined figure per day. Summing the bar
+ * datasets per index handles stacked and plain bars with the same code, and
+ * avoids a second CDN script.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function barTotalsPlugin(color: string): any {
+  return {
+    id: 'barTotals',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    afterDatasetsDraw(chart: any) {
+      const { ctx, data } = chart;
+      const count = data.labels?.length ?? 0;
+      if (!count) return;
+
+      ctx.save();
+      ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+
+      for (let i = 0; i < count; i++) {
+        let total = 0;
+        let topY = Infinity;
+        let x: number | null = null;
+
+        data.datasets.forEach((ds: { type?: string; data: number[] }, di: number) => {
+          // Skip the dashed average line — it isn't part of the day's total.
+          if (ds.type && ds.type !== 'bar') return;
+          const meta = chart.getDatasetMeta(di);
+          if (meta.hidden) return;
+          const el = meta.data?.[i];
+          if (!el) return;
+          total += ds.data[i] || 0;
+          if (el.y < topY) topY = el.y;
+          x = el.x;
+        });
+
+        // Nothing sold that day — a "0" on every empty bar is just noise.
+        if (!total || x === null || topY === Infinity) continue;
+        ctx.fillText(fmt(total), x, topY - 4);
+      }
+      ctx.restore();
+    },
+  };
+}
+
 /** Figures shown above a chart, summarising whatever range is in view. */
 function ChartTotals({ items }: { items: Array<{ label: string; value: string; accent?: boolean }> }) {
   return (
@@ -189,15 +250,18 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           },
         ],
       },
+      plugins: [barTotalsPlugin(textColor)],
       options: {
         responsive: true, maintainAspectRatio: false,
+        // Headroom so the tallest bar's label isn't clipped by the canvas edge.
+        layout: { padding: { top: 18 } },
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { label: (c: { parsed: { y: number } }) => ` KSh ${fmt(c.parsed.y)}` } },
         },
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
-          y: { grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1000).toFixed(0)}k` } },
+          y: { grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => axisTick(v) } },
         },
       },
     });
@@ -232,8 +296,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           },
         ],
       },
+      plugins: [barTotalsPlugin(textColor)],
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 18 } },
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -246,7 +312,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
-          y: { stacked: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1000).toFixed(0)}k` } },
+          y: { stacked: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => axisTick(v) } },
         },
       },
     });
