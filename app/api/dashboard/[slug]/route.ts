@@ -310,8 +310,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     rows: filteredProdRows.map(row =>
       includedCols.map(({ i }) => {
         const val = row[i];
-        // Truncate datetime strings to date-only for cleaner display
-        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
+        // Timestamps are passed through in full. Card 3191 groups by minute, so
+        // a product sold several times in a day produces several rows — dropping
+        // the time made those look like duplicates. The client formats them.
         return val as string | number | null;
       })
     ),

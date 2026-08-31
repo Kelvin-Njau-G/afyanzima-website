@@ -52,6 +52,24 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+/**
+ * Render a Metabase timestamp as "2026-08-24 14:35".
+ *
+ * Reads the string directly rather than going through `new Date()`, which would
+ * shift the value into the viewer's local timezone. The times come from
+ * Metabase already in the pharmacy's own timezone, so a partner opening the
+ * dashboard while travelling should still see the hour the sale rang up.
+ */
+function formatTimestamp(value: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return value;
+  const [, date, hh, mm] = m;
+  // Midnight means the source has no clock time — show date only rather than
+  // an "00:00" that looks like a real sale time.
+  if (hh === '00' && mm === '00') return date;
+  return `${date} ${hh}:${mm}`;
+}
+
 function formatCell(value: string | number | null, colType: string, header: string): string {
   if (value === null || value === undefined) return '—';
   if (typeof value === 'number') {
@@ -59,7 +77,24 @@ function formatCell(value: string | number | null, colType: string, header: stri
     if (/\bmargin\b/i.test(header)) return `${(value * 100).toFixed(2)}%`;
     return fmt(value);
   }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return formatTimestamp(value);
   return String(value);
+}
+
+/** Figures shown above a chart, summarising whatever range is in view. */
+function ChartTotals({ items }: { items: Array<{ label: string; value: string; accent?: boolean }> }) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-x-8 gap-y-3 border-b border-gray-100 pb-3">
+      {items.map((it) => (
+        <div key={it.label}>
+          <p className="text-[11px] text-gray-500">{it.label}</p>
+          <p className={`text-lg font-medium ${it.accent ? 'text-green-700' : 'text-gray-900'}`}>
+            {it.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function PartnerDashboard({ params }: { params: { slug: string } }) {
@@ -403,6 +438,23 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartReady, filteredDaily, view]);
 
+  /**
+   * Totals shown above the charts. Derived from the same series the charts
+   * draw, so the header and the bars can never disagree — whatever the filters
+   * are set to, these are the sum of what's visible.
+   */
+  const chartTotals = useMemo(() => {
+    const revenue = filteredDaily.reduce((a, d) => a + d.revenue, 0);
+    const cogs    = filteredDaily.reduce((a, d) => a + d.cogs, 0);
+    const profit  = filteredDaily.reduce((a, d) => a + d.profit, 0);
+    return {
+      revenue, cogs, profit,
+      marginPct: revenue ? Math.round((profit / revenue) * 1000) / 10 : 0,
+      days: filteredDaily.length,
+      sellingDays: filteredDaily.filter((d) => d.revenue > 0).length,
+    };
+  }, [filteredDaily]);
+
   /** The Qaalane catalogue has no dates, so only the product filter applies. */
   const filteredCatalogue = useMemo(() => {
     const all = data?.fullProductTable ?? [];
@@ -521,6 +573,16 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         {/* Daily sales chart */}
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales — {isFiltered ? `${filters?.from} to ${filters?.to}` : data.monthLabel}</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
+          <ChartTotals
+            items={[
+              { label: 'Total sales', value: `KSh ${fmt(chartTotals.revenue)}`, accent: true },
+              { label: 'Daily average', value: `KSh ${fmt(m.avgDaily)}` },
+              {
+                label: 'Days with sales',
+                value: `${chartTotals.sellingDays} of ${chartTotals.days}`,
+              },
+            ]}
+          />
           <div className="relative h-56 w-full">
             <canvas ref={dailyRef} role="img" aria-label="Bar chart of daily pharmacy sales this month." />
           </div>
@@ -532,8 +594,16 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         </div>
 
         {/* Daily Sales & Margin chart */}
-        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales & margin — {data.monthLabel}</p>
+        <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales & margin — {isFiltered ? `${filters?.from} to ${filters?.to}` : data.monthLabel}</p>
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
+          <ChartTotals
+            items={[
+              { label: 'Total sales', value: `KSh ${fmt(chartTotals.revenue)}` },
+              { label: 'Total COGS', value: `KSh ${fmt(chartTotals.cogs)}` },
+              { label: 'Gross profit', value: `KSh ${fmt(chartTotals.profit)}`, accent: true },
+              { label: 'Margin', value: `${chartTotals.marginPct}%` },
+            ]}
+          />
           <div className="relative h-56 w-full">
             <canvas ref={marginRef} role="img" aria-label="Stacked bar chart showing COGS and gross profit per day." />
           </div>
