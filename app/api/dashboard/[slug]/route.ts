@@ -145,13 +145,82 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
 
   const facilityName = facility.name;
-  const today = new Date();
-  const monthPrefix = today.toISOString().slice(0, 7);
-  const monthLabel  = today.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  const todayStr    = today.toISOString().slice(0, 10);
-  const monthStart  = `${monthPrefix}-01`;
-  const nextMonth   = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const monthEnd    = nextMonth.toISOString().slice(0, 10);
+
+  // ── What window are we reporting on? ────────────────────────────────────────
+  // The route fetches an arbitrary [from, to] date range. A month is just the
+  // common case of that, so the client can send either:
+  //   { month: '2026-09' }              — that whole calendar month
+  //   { from: '2026-09-26', to: '...' } — any range, including across months
+  // Anything malformed falls back to the current month rather than erroring,
+  // so a stale bookmark still loads something sensible.
+  //
+  // All date maths runs in Africa/Nairobi. The server's UTC clock would put the
+  // dashboard a day behind for the first three hours of every Nairobi day.
+  const nairobiNow = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })
+  );
+  const currentPrefix = `${nairobiNow.getFullYear()}-${String(nairobiNow.getMonth() + 1).padStart(2, '0')}`;
+  const todayStr = `${currentPrefix}-${String(nairobiNow.getDate()).padStart(2, '0')}`;
+
+  const isMonth = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+  const isDate  = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+  /** First and last day of a YYYY-MM. */
+  const monthRange = (prefix: string) => {
+    const [y, mo] = prefix.split('-').map(Number);
+    const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    return { from: `${prefix}-01`, to: `${prefix}-${String(days).padStart(2, '0')}`, days };
+  };
+
+  let windowFrom: string;
+  let windowTo: string;
+
+  if (isDate(body?.from) && isDate(body?.to) && body.from <= body.to) {
+    windowFrom = body.from;
+    windowTo = body.to;
+  } else {
+    const prefix = isMonth(body?.month) ? body.month : currentPrefix;
+    ({ from: windowFrom, to: windowTo } = monthRange(prefix));
+  }
+
+  // Never fetch past today — future dates return nothing and make the chart
+  // trail off into empty bars.
+  if (windowTo > todayStr) windowTo = todayStr;
+  if (windowFrom > windowTo) windowFrom = windowTo;
+
+  // Exclusive upper bound for the Metabase filter: midnight the following day.
+  const nextDay = new Date(`${windowTo}T00:00:00Z`);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const windowEndExclusive = nextDay.toISOString().slice(0, 10);
+
+  const inWindow = (d: string) => d >= windowFrom && d <= windowTo;
+
+  // Is this window exactly one whole calendar month? That decides whether the
+  // month-grain Metabase cards (2536 discounts, 2410 margin) can be used as-is,
+  // and whether "month-to-date" and the projection make any sense.
+  const windowPrefix = windowFrom.slice(0, 7);
+  const asMonth = monthRange(windowPrefix);
+  const isWholeMonth =
+    windowFrom === asMonth.from &&
+    (windowTo === asMonth.to || (windowPrefix === currentPrefix && windowTo === todayStr));
+  const isCurrentMonth = isWholeMonth && windowPrefix === currentPrefix;
+  const daysInMonth = asMonth.days;
+
+  const fmtDay = (d: string, opts: Intl.DateTimeFormatOptions) =>
+    new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { ...opts, timeZone: 'UTC' });
+
+  // "September 2026" for a whole month, "26 Sep – 2 Oct 2026" for a custom range.
+  const monthLabel = isWholeMonth
+    ? fmtDay(windowFrom, { month: 'long', year: 'numeric' })
+    : windowFrom === windowTo
+      // A single day shouldn't read "2 Oct – 2 Oct 2026".
+      ? fmtDay(windowFrom, { day: 'numeric', month: 'short', year: 'numeric' })
+      : `${fmtDay(windowFrom, { day: 'numeric', month: 'short' })} – ${fmtDay(windowTo, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+  // Kept under the old names so the rest of the route reads unchanged.
+  const monthStart = windowFrom;
+  const monthEnd = windowTo;
+  const monthEndExclusive = windowEndExclusive;
 
   const auth = (await mbFetch('/api/session', { username: MB_USER, password: MB_PASS })) as { id: string };
   const token = auth.id;
@@ -163,14 +232,14 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/card/2262/query', {}, token),   // 0: daily revenue per facility
     mbFetch('/api/card/2536/query', {}, token),   // 1: discounts / net revenue
     mbFetch('/api/card/2410/query', {}, token),   // 2: gross margin %
-    mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 2000), token), // 3: all products sold this month
+    mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 2000), token), // 3: all products sold this month
     mbFetch('/api/card/2507/query', {}, token),   // 4: inventory value by class
     mbFetch('/api/card/1661/query', {}, token),   // 5: monthly restock value
     mbFetch('/api/card/3193/query', {}, token),   // 6: daily COGS & profit
     mbFetch('/api/card/3191/query', {}, token),   // 7: daily sales by product
   ];
   if (isQaalane) {
-    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEnd, 500), token)); // 8
+    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 500), token)); // 8
     fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 9
   }
 
@@ -178,7 +247,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes] = results;
 
   // ── Daily revenue ────────────────────────────────────────────────────────────
-  const monthRows = dailyRes.data.rows.filter(r => typeof r[0] === 'string' && r[0].startsWith(monthPrefix));
+  const monthRows = dailyRes.data.rows.filter(
+    r => typeof r[0] === 'string' && inWindow(r[0].slice(0, 10))
+  );
   const byDate: Record<string, Record<string, number>> = {};
   const activeFacilities = new Set<string>();
   for (const row of monthRows) {
@@ -191,7 +262,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const dates = Object.keys(byDate).sort();
 
   // ── Discounts ────────────────────────────────────────────────────────────────
-  const discRow = discRes.data.rows.find(r => typeof r[0] === 'string' && r[0].startsWith(monthPrefix) && r[1] === facilityName);
+  // Cards 2536 and 2410 hold one pre-aggregated row per facility per month, so
+  // they only answer a whole-month window. For any other range these come out
+  // as zero and the figures are totalled from the daily series instead.
+  const discRow = isWholeMonth
+    ? discRes.data.rows.find(r => typeof r[0] === 'string' && r[0].startsWith(windowPrefix) && r[1] === facilityName)
+    : undefined;
   const gross       = Math.round((discRow?.[2] as number) || 0);
   const discountPct = Math.round(((discRow?.[3] as number) || 0) * 1000) / 10;
   const discountAmt = Math.round((discRow?.[4] as number) || 0);
@@ -199,9 +275,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   // ── Margin ───────────────────────────────────────────────────────────────────
   const margins: Record<string, number> = {};
-  for (const row of marginRes.data.rows) {
-    if (typeof row[0] === 'string' && row[0].startsWith(monthPrefix))
-      margins[row[1] as string] = Math.round((row[2] as number) * 1000) / 10;
+  if (isWholeMonth) {
+    for (const row of marginRes.data.rows) {
+      if (typeof row[0] === 'string' && row[0].startsWith(windowPrefix))
+        margins[row[1] as string] = Math.round((row[2] as number) * 1000) / 10;
+    }
   }
   const marginPct   = margins[facilityName] ?? 0;
   const grossProfit = Math.round(gross * marginPct / 100);
@@ -221,7 +299,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   for (const row of dailyProfitRes.data.rows) {
     const rawDate = dpDateIdx >= 0 ? row[dpDateIdx] : null;
     const d = typeof rawDate === 'string' ? rawDate.slice(0, 10) : '';
-    if (!d.startsWith(monthPrefix)) continue;
+    if (!d || !inWindow(d)) continue;
     const fac = dpOrgIdx >= 0 ? (row[dpOrgIdx] as string) : '';
     if (fac !== facilityName) continue;
 
@@ -244,7 +322,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const cogs   = rawCOGS   !== undefined ? rawCOGS   : (revenue - profit);
     return {
       date: d,
-      label: `${today.toLocaleDateString('en-GB', { month: 'short' })} ${parseInt(d.slice(8))}`,
+      label: fmtDay(d, { day: 'numeric', month: 'short' }),
       revenue,
       cogs:   Math.max(0, cogs),
       profit: Math.max(0, profit),
@@ -255,8 +333,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   const completeDays = daily.filter(d => d.date < todayStr && d.revenue > 0).map(d => d.revenue);
   const avgDaily    = completeDays.length ? Math.round(completeDays.reduce((a, b) => a + b, 0) / completeDays.length) : 0;
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const projected   = avgDaily * daysInMonth;
+  // A finished month has no "projection" — the actual total is the answer.
+  const monthTotal = daily.reduce((a, d) => a + d.revenue, 0);
+  const projected  = isCurrentMonth ? avgDaily * daysInMonth : monthTotal;
 
   // ── Top 20 products ──────────────────────────────────────────────────────────
   // Every product sold this month, not just the top handful. Rows with no
@@ -271,13 +350,41 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       margin:  (row[3] as number) > 0 ? Math.round(((row[4] as number) / (row[3] as number)) * 1000) / 10 : 0,
     }));
 
+  // ── Months this facility has data for ───────────────────────────────────────
+  // Card 2262 carries one row per day per facility across the full history, so
+  // it's the cheapest honest source for "which months can this partner open?".
+  // Built from data already fetched — no extra Metabase round trip.
+  const monthSet = new Set<string>();
+  let dataStart = todayStr;
+  for (const row of dailyRes.data.rows) {
+    if (typeof row[0] !== 'string') continue;
+    if (row[1] !== facilityName) continue;
+    if (((row[2] as number) || 0) <= 0) continue;
+    monthSet.add(row[0].slice(0, 7));
+    const d = row[0].slice(0, 10);
+    if (d < dataStart) dataStart = d;
+  }
+  // Always offer the current month, even before the first sale lands in it.
+  monthSet.add(currentPrefix);
+  const availableMonths = Array.from(monthSet)
+    .sort()
+    .reverse()
+    .map(prefix => {
+      const [y, mo] = prefix.split('-').map(Number);
+      return {
+        value: prefix,
+        label: new Date(Date.UTC(y, mo - 1, 1))
+          .toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      };
+    });
+
   // ── Inventory value ──────────────────────────────────────────────────────────
   const invRows = invByClassRes.data.rows.filter(r => r[0] === facilityName);
   const inventoryValue = Math.round(invRows.reduce((s, r) => s + ((r[2] as number) || 0), 0));
 
   // ── Monthly restock ──────────────────────────────────────────────────────────
   const restockRows = restockRes.data.rows.filter(
-    r => r[0] === facilityName && typeof r[1] === 'string' && r[1].startsWith(monthPrefix)
+    r => r[0] === facilityName && typeof r[1] === 'string' && inWindow(r[1].slice(0, 10))
   );
   const monthlyRestockValue = Math.round(restockRows.reduce((s, r) => s + ((r[6] as number) || 0), 0));
 
@@ -293,7 +400,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (dbpOrgIdx >= 0 && row[dbpOrgIdx] !== facilityName) return false;
     if (dbpDateIdx >= 0) {
       const rawD = row[dbpDateIdx];
-      if (typeof rawD === 'string' && !rawD.startsWith(monthPrefix)) return false;
+      if (typeof rawD === 'string' && !inWindow(rawD.slice(0, 10))) return false;
     }
     return true;
   });
@@ -399,6 +506,19 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   return NextResponse.json({
     facility: facilityName,
     monthLabel,
+    month: windowPrefix,
+    windowFrom,
+    windowTo,
+    isWholeMonth,
+    monthStart,
+    monthEnd,
+    // Anchors for the quick presets. Sent by the server so "Today" means today
+    // in Nairobi rather than wherever the viewer's browser happens to be.
+    currentMonth: currentPrefix,
+    dataStart,
+    today: `${currentPrefix}-${String(nairobiNow.getDate()).padStart(2, '0')}`,
+    isCurrentMonth,
+    availableMonths,
     generatedAt: new Date().toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }),
     dates,
     dateLabels: daily.map(d => d.label),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import DashboardFilters, { type Filters } from '@/components/dashboard-filters';
+import DashboardFilters, { type Filters, type RangeIntent } from '@/components/dashboard-filters';
 
 type DailyEntry = {
   date: string; label: string; revenue: number; cogs: number; profit: number; discount: number;
@@ -17,6 +17,17 @@ type ProductRow = { product: string; sku: string; qty: number; revenue: number; 
 type DashboardData = {
   facility: string;
   monthLabel: string;
+  month: string;
+  monthStart: string;
+  monthEnd: string;
+  currentMonth: string;
+  today: string;
+  windowFrom: string;
+  windowTo: string;
+  isWholeMonth: boolean;
+  dataStart: string;
+  isCurrentMonth: boolean;
+  availableMonths: Array<{ value: string; label: string }>;
   generatedAt: string;
   dates: string[];
   dateLabels: string[];
@@ -168,6 +179,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   const [checking, setChecking]   = useState(true);
   const [filters, setFilters]     = useState<Filters | null>(null);
   const [chartReady, setChartReady] = useState(false);
+  // Which month is on screen. null means "whatever the server defaults to",
+  // i.e. the current month on first load.
+  const [month, setMonth]         = useState<string | null>(null);
+  const [monthLoading, setMonthLoading] = useState(false);
 
   const dailyRef      = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
@@ -195,6 +210,44 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Load a different month.
+   *
+   * Unlike the date and product filters, this can't be done client-side: the
+   * route only ships one month's rows at a time, so the data for an earlier
+   * month simply isn't here yet. Hence the refetch and the loading state.
+   */
+  /**
+   * Fetch a date window from the server.
+   *
+   * The date and product filters run in the browser over whatever is loaded,
+   * but a window the browser doesn't hold — an earlier month, or a 7-day span
+   * crossing a month boundary — has to come from Metabase, so this refetches.
+   */
+  async function loadWindow(next: { from: string; to: string } | { month: string }) {
+    setMonthLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/dashboard/${params.slug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...next, password: password || undefined }),
+      });
+      if (!res.ok) throw new Error('Server error');
+      const json: DashboardData = await res.json();
+
+      setMonth(json.month);
+      setData(json);
+      // Show the whole window that was just loaded. Narrowing inside it stays
+      // instant; the pickers only refetch when they leave it.
+      setFilters({ from: json.windowFrom, to: json.windowTo, product: '' });
+    } catch {
+      setError('Could not load that period. Please try again.');
+    } finally {
+      setMonthLoading(false);
+    }
+  }
 
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -323,11 +376,12 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   // The whole current month is already in the browser at daily grain, so every
   // filter below is a pure recomputation — no refetch, no spinner.
 
-  const monthBounds = useMemo(() => {
-    const dates = data?.metrics.daily.map((d) => d.date) ?? [];
-    if (!dates.length) return null;
-    return { start: dates[0], end: dates[dates.length - 1] };
-  }, [data]);
+  // The window currently loaded in the browser. Filtering inside it is
+  // instant; stepping outside it means a refetch.
+  const monthBounds = useMemo(
+    () => (data ? { start: data.windowFrom, end: data.windowTo } : null),
+    [data],
+  );
 
   // Initialise the range to the full month once the data lands.
   useEffect(() => {
@@ -339,7 +393,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   const roles = data?.columnRoles;
   const dbpRows = data?.dailySalesByProduct.rows ?? [];
 
-  /** Every product name that appears this month, for the search box. */
+  /** Every product name appearing in the loaded month, for the search box. */
   const productNames = useMemo(() => {
     if (!roles || roles.product < 0) return [];
     const set = new Set<string>();
@@ -375,6 +429,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
     (filters.from !== monthBounds.start ||
       filters.to !== monthBounds.end ||
       !!filters.product);
+
+  // Cards 2536 and 2410 are month-grain, so they only describe a whole-month
+  // window. Any other range — or any filter — means totalling the daily series.
+  const useDailyTotals = isFiltered || !!(data && !data.isWholeMonth);
 
   /**
    * Daily entries driving the charts and scorecards.
@@ -436,7 +494,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   const view = useMemo(() => {
     const m = data?.metrics;
     if (!m) return null;
-    if (!isFiltered) {
+    if (!useDailyTotals) {
       return {
         gross: m.gross, net: m.net, discountAmt: m.discountAmt, discountPct: m.discountPct,
         marginPct: m.marginPct, netMarginPct: m.netMarginPct,
@@ -458,10 +516,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       grossProfit,
       netProfit: grossProfit - discountAmt,
       avgDaily: days ? Math.round(gross / days) : 0,
-      projected: days ? Math.round((gross / days) * m.daysInMonth) : 0,
+      projected: data?.isCurrentMonth && days ? Math.round((gross / days) * m.daysInMonth) : gross,
       computed: true,
     };
-  }, [data, filteredDaily, isFiltered]);
+  }, [data, filteredDaily, useDailyTotals]);
 
   /**
    * Product table, rebuilt from the filtered rows when a filter is on.
@@ -470,6 +528,8 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
    */
   const productRows = useMemo((): ProductRow[] => {
     if (!data) return [];
+    // topProducts is aggregated server-side over the whole window, so it's
+    // correct whenever nothing is narrowed inside that window.
     if (!isFiltered || !roles || roles.product < 0) return data.commercial.topProducts;
 
     const acc = new Map<string, { qty: number; revenue: number; profit: number }>();
@@ -598,17 +658,32 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
             filters={filters}
             onChange={setFilters}
             resultCount={filteredDbpRows.length}
+            month={data.month}
+            availableMonths={data.availableMonths}
+            onWindow={loadWindow}
+            monthLoading={monthLoading}
+            currentMonth={data.currentMonth}
+            today={data.today}
+            dataStart={data.dataStart}
           />
+        )}
+
+        {monthLoading && (
+          <p className="mb-4 text-sm text-gray-500">Loading {data.monthLabel}…</p>
         )}
 
         {/* ── COMMERCIAL ──────────────────────────────────────── */}
         <SectionHeader title="Commercial" />
 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
-          {isFiltered ? 'Selected period summary' : 'Month-to-date summary'}
+          {isFiltered
+            ? 'Selected period summary'
+            : data.isCurrentMonth
+              ? 'Month-to-date summary'
+              : `${data.monthLabel} summary`}
         </p>
 
-        <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+        <div className={`mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5 ${monthLoading ? 'opacity-40' : ''}`}>
           {[
             { label: 'Gross revenue',    value: fmt(m.gross),       sub: 'KSh · before discounts' },
             { label: 'Net revenue',      value: fmt(m.net),         sub: 'KSh · after discounts' },
@@ -627,12 +702,24 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           <div className="rounded-lg bg-gray-100 p-3.5">
             <p className="mb-1 text-[11px] text-gray-500">Avg daily sales</p>
             <p className="text-xl font-medium text-gray-900">{fmt(m.avgDaily)}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · based on complete days</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">
+              KSh · {data.isCurrentMonth ? 'based on complete days' : 'across days with sales'}
+            </p>
           </div>
           <div className="rounded-lg bg-gray-100 p-3.5 border-l-[3px] border-green-600">
-            <p className="mb-1 text-[11px] text-gray-500">Projected monthly revenue</p>
+            <p className="mb-1 text-[11px] text-gray-500">
+              {data.isCurrentMonth
+                ? 'Projected monthly revenue'
+                : data.isWholeMonth
+                  ? 'Total monthly revenue'
+                  : 'Total revenue for period'}
+            </p>
             <p className="text-xl font-medium text-green-700">{fmt(m.projected)}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · avg × {raw.daysInMonth} days</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">
+              KSh · {data.isCurrentMonth
+                ? `avg × ${raw.daysInMonth} days`
+                : `actual for ${data.monthLabel}`}
+            </p>
           </div>
         </div>
 
@@ -650,7 +737,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
             ]}
           />
           <div className="relative h-56 w-full">
-            <canvas ref={dailyRef} role="img" aria-label="Bar chart of daily pharmacy sales this month." />
+            <canvas ref={dailyRef} role="img" aria-label={`Bar chart of daily pharmacy sales for ${data.monthLabel}.`} />
           </div>
           <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-400">
             <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-600" />Daily sales (KSh)</span>
@@ -687,7 +774,9 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           const tableMinW = COL_W.reduce((s, w) => s + w, 0);
           return (
             <>
-              <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">Daily sales by product — {data.monthLabel}</p>
+              <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
+                Daily sales by product — {isFiltered ? `${filters?.from} to ${filters?.to}` : data.monthLabel}
+              </p>
               {/* max-h + overflow-auto confines scrolling to this card; overscroll-contain stops page scroll chaining */}
               <div className="mb-6 max-h-[400px] overflow-auto overscroll-contain rounded-xl border border-gray-100">
                 <table
@@ -762,7 +851,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         })()}
 
         <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
-          Total sales by product this month
+          Total sales by product — {isFiltered ? `${filters?.from} to ${filters?.to}` : data.monthLabel}
           {productRows.length > 0 && (
             <span className="ml-2 normal-case tracking-normal text-gray-400">
               ({productRows.length} SKUs)
@@ -807,26 +896,35 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         {/* ── INVENTORY ──────────────────────────────────────── */}
         <SectionHeader title="Inventory" />
 
-        {/* Inventory comes from stock-level cards that carry neither a date nor
-            a product breakdown, so these two can't follow the filters. Say so
-            rather than leave unfiltered figures sitting beside filtered ones. */}
-        {isFiltered && (
+        {/* Inventory value is a snapshot of stock on hand right now — there is
+            no historical stock card to read, so it can't follow the filters and
+            it can't be rewound to a past month. Restock CAN, since card 1661 is
+            dated. Spelling out which is which matters most when an old month is
+            on screen, where an unlabelled "current" figure reads as history. */}
+        {data.windowTo < data.today ? (
+          <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
+            Stock on hand is today&apos;s figure, not {data.monthLabel}&apos;s — there is no
+            historical stock record to show. Restock below is for {data.monthLabel}.
+          </p>
+        ) : isFiltered ? (
           <p className="mb-2.5 text-[11px] text-gray-400">
             Not affected by the filters above — these are current stock figures for the
             whole facility.
           </p>
-        )}
+        ) : null}
 
         <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <div className="rounded-lg bg-gray-100 p-3.5">
-            <p className="mb-1 text-[11px] text-gray-500">Total inventory value</p>
+            <p className="mb-1 text-[11px] text-gray-500">
+              Total inventory value{data.windowTo < data.today && ' (today)'}
+            </p>
             <p className="text-xl font-medium text-gray-900">{fmt(data.inventory.inventoryValue)}</p>
             <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
           </div>
           <div className="rounded-lg bg-gray-100 p-3.5 border-l-[3px] border-green-600">
             <p className="mb-1 text-[11px] text-gray-500">Monthly restock value</p>
             <p className="text-xl font-medium text-green-700">{fmt(data.inventory.monthlyRestockValue)}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received in {data.monthLabel}</p>
           </div>
         </div>
 
@@ -835,7 +933,7 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
           <>
             <SectionHeader title="Product catalogue" />
             <p className="mb-2.5 text-xs font-medium uppercase tracking-widest text-gray-400">
-              All products sold this month ({filteredCatalogue.length} SKUs)
+              All products sold in {data.monthLabel} ({filteredCatalogue.length} SKUs)
             </p>
             <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
               <table className="w-full text-sm" style={{ tableLayout: 'fixed', minWidth: '680px' }}>

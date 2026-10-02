@@ -13,6 +13,33 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 export type Filters = { from: string; to: string; product: string };
 
 /**
+ * Which range to land on after a month is loaded.
+ *
+ * Needed because two of the presets cross a month boundary: picking "Last
+ * month", or "Today" while an old month is open, means fetching a different
+ * month AND then selecting a range inside it. The intent has to survive the
+ * refetch, so it travels with the month-change request.
+ */
+export type RangeIntent = 'full' | 'today' | 'last7';
+
+/** First and last day of a month, clipped to `cap` (today) when given. */
+export function monthRangeOf(prefix: string, cap?: string): { from: string; to: string } {
+  const [y, m] = prefix.split('-').map(Number);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const from = `${prefix}-01`;
+  let to = `${prefix}-${String(days).padStart(2, '0')}`;
+  if (cap && to > cap) to = cap;
+  return { from, to };
+}
+
+/** The YYYY-MM immediately before the given one. */
+export function previousMonth(prefix: string): string {
+  const [y, m] = prefix.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
  * Subsequence match, the way editors match file names: every character of the
  * query must appear in order, but not necessarily adjacently. "amx" finds
  * "AMOXICLAV". Falls back to plain substring scoring for ranking.
@@ -54,6 +81,13 @@ export default function DashboardFilters({
   filters,
   onChange,
   resultCount,
+  month,
+  availableMonths,
+  onWindow,
+  monthLoading,
+  currentMonth,
+  today,
+  dataStart,
 }: {
   monthStart: string;
   monthEnd: string;
@@ -61,6 +95,13 @@ export default function DashboardFilters({
   filters: Filters;
   onChange: (f: Filters) => void;
   resultCount: number;
+  month: string;
+  availableMonths: Array<{ value: string; label: string }>;
+  onWindow: (w: { from: string; to: string } | { month: string }) => void;
+  monthLoading: boolean;
+  currentMonth: string;
+  today: string;
+  dataStart: string;
 }) {
   const [query, setQuery] = useState(filters.product);
   const [open, setOpen] = useState(false);
@@ -91,25 +132,79 @@ export default function DashboardFilters({
   const isFiltered =
     filters.from !== monthStart || filters.to !== monthEnd || !!filters.product;
 
-  const presets: Array<{ label: string; from: string; to: string }> = (() => {
-    const end = monthEnd;
-    const endDate = new Date(`${end}T00:00:00`);
-    const back = (n: number) => {
-      const d = new Date(endDate);
-      d.setDate(d.getDate() - n + 1);
-      const iso = d.toISOString().slice(0, 10);
-      return iso < monthStart ? monthStart : iso;
-    };
-    return [
-      { label: 'Full month', from: monthStart, to: monthEnd },
-      { label: 'Last 7 days', from: back(7), to: end },
-      { label: 'Today', from: end, to: end },
-    ];
-  })();
+  const prev = previousMonth(currentMonth);
+  const hasPrev = availableMonths.some((m) => m.value === prev);
+
+  /** N days back from today, inclusive of today — may cross a month boundary. */
+  const daysBack = (n: number) => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (n - 1));
+    const iso = d.toISOString().slice(0, 10);
+    return iso < dataStart ? dataStart : iso;
+  };
+
+  type Preset = {
+    label: string;
+    active: boolean;
+    disabled?: boolean;
+    title?: string;
+    apply: () => void;
+  };
+
+  const curMonth = monthRangeOf(currentMonth, today);
+  const prevMonth = monthRangeOf(prev);
+  const last7From = daysBack(7);
+
+  /** True when the loaded window and the visible range are both exactly this. */
+  const showing = (from: string, to: string) =>
+    monthStart === from && monthEnd === to && filters.from === from && filters.to === to;
+
+  const presets: Preset[] = [
+    {
+      label: 'This month',
+      active: showing(curMonth.from, curMonth.to),
+      apply: () => onWindow({ month: currentMonth }),
+    },
+    {
+      label: 'Last month',
+      active: showing(prevMonth.from, prevMonth.to),
+      disabled: !hasPrev,
+      title: hasPrev ? undefined : 'No sales recorded for that month',
+      apply: () => onWindow({ month: prev }),
+    },
+    {
+      label: 'Last 7 days',
+      active: showing(last7From, today),
+      apply: () => onWindow({ from: last7From, to: today }),
+    },
+    {
+      label: 'Today',
+      active: showing(today, today),
+      apply: () => onWindow({ from: today, to: today }),
+    },
+  ];
 
   return (
     <div className="mb-6 rounded-xl border border-gray-100 bg-white p-4">
       <div className="flex flex-wrap items-end gap-4">
+        {/* Month sits first: it's the only control that refetches, and the
+            date pickers below are bounded by whichever month is chosen. */}
+        <div>
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-gray-400">
+            Month
+          </label>
+          <select
+            value={month}
+            disabled={monthLoading}
+            onChange={(e) => onWindow({ month: e.target.value })}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
+          >
+            {availableMonths.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-gray-400">
             From
@@ -117,10 +212,18 @@ export default function DashboardFilters({
           <input
             type="date"
             value={filters.from}
-            min={monthStart}
+            min={dataStart}
             max={filters.to}
-            onChange={(e) => onChange({ ...filters, from: e.target.value })}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7]"
+            disabled={monthLoading}
+            onChange={(e) => {
+              const from = e.target.value;
+              if (!from) return;
+              // Outside the loaded window means the browser doesn't have those
+              // rows — fetch them rather than silently showing nothing.
+              if (from < monthStart) onWindow({ from, to: filters.to });
+              else onChange({ ...filters, from });
+            }}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
           />
         </div>
         <div>
@@ -131,9 +234,15 @@ export default function DashboardFilters({
             type="date"
             value={filters.to}
             min={filters.from}
-            max={monthEnd}
-            onChange={(e) => onChange({ ...filters, to: e.target.value })}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7]"
+            max={today}
+            disabled={monthLoading}
+            onChange={(e) => {
+              const to = e.target.value;
+              if (!to) return;
+              if (to > monthEnd) onWindow({ from: filters.from, to });
+              else onChange({ ...filters, to });
+            }}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
           />
         </div>
 
@@ -192,22 +301,21 @@ export default function DashboardFilters({
         </div>
 
         <div className="flex gap-1.5">
-          {presets.map((p) => {
-            const active = filters.from === p.from && filters.to === p.to;
-            return (
-              <button
-                key={p.label}
-                onClick={() => onChange({ ...filters, from: p.from, to: p.to })}
-                className={`rounded-lg border px-3 py-2 text-xs ${
-                  active
-                    ? 'border-[#066DB7] text-[#066DB7]'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                }`}
-              >
-                {p.label}
-              </button>
-            );
-          })}
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              onClick={p.apply}
+              disabled={p.disabled || monthLoading}
+              title={p.title}
+              className={`rounded-lg border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
+                p.active
+                  ? 'border-[#066DB7] text-[#066DB7]'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
       </div>
 
