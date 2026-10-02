@@ -306,35 +306,46 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes, monthsRes, dailySeriesRes] = results;
 
   // ── Daily revenue ────────────────────────────────────────────────────────────
-  // Preferred source: the window-bounded query against the transaction table,
-  // which is guaranteed to cover whatever range was asked for.
-  const seriesRows = dailySeriesRes?.data?.rows ?? [];
+  // Revenue source order matters, and it is NOT arbitrary.
+  //
+  // Card 2262 is the figure that has been reconciled against the month totals
+  // in cards 2536/2410, so it stays the primary source — a partial-month view
+  // must add up to the same money as the whole-month view. The transaction
+  // query only fills dates card 2262 doesn't reach (it carries its own date
+  // filter in Metabase, which is why past months came back empty before).
+  //
+  // The two can disagree: the transaction query restricts to
+  // Department = 'Pharmacy', and card 2262 may not. Preferring it would
+  // silently change every number on the page.
   const byDate: Record<string, Record<string, number>> = {};
-  const activeFacilities = new Set<string>([facilityName]);
+  const activeFacilities = new Set<string>();
   const sourceProfitMap: Record<string, number> = {};
 
-  for (const row of seriesRows) {
+  for (const row of dailyRes.data.rows) {
     if (typeof row[0] !== 'string') continue;
     const d = row[0].slice(0, 10);
     if (!inWindow(d)) continue;
+    const fac = row[1] as string;
     byDate[d] ??= {};
-    byDate[d][facilityName] = Math.round((row[1] as number) || 0);
-    sourceProfitMap[d] = Math.round((row[2] as number) || 0);
+    byDate[d][fac] = Math.round((row[2] as number) || 0);
+    activeFacilities.add(fac);
   }
 
-  // Fallback to card 2262 if that query returned nothing — keeps the dashboard
-  // working if the source table is ever renamed out from under us.
-  if (!Object.keys(byDate).length) {
-    for (const row of dailyRes.data.rows) {
-      if (typeof row[0] !== 'string') continue;
-      const d = row[0].slice(0, 10);
-      if (!inWindow(d)) continue;
-      const fac = row[1] as string;
-      byDate[d] ??= {};
-      byDate[d][fac] = Math.round((row[2] as number) || 0);
-      activeFacilities.add(fac);
-    }
+  // Fill only the gaps, so a window reaching further back than card 2262 goes
+  // still renders instead of showing an empty chart.
+  let filledFromSource = 0;
+  for (const row of dailySeriesRes?.data?.rows ?? []) {
+    if (typeof row[0] !== 'string') continue;
+    const d = row[0].slice(0, 10);
+    if (!inWindow(d)) continue;
+    sourceProfitMap[d] = Math.round((row[2] as number) || 0);
+    if (byDate[d]?.[facilityName] !== undefined) continue;
+    byDate[d] ??= {};
+    byDate[d][facilityName] = Math.round((row[1] as number) || 0);
+    activeFacilities.add(facilityName);
+    filledFromSource++;
   }
+
   const dates = Object.keys(byDate).sort();
 
   // ── Discounts ────────────────────────────────────────────────────────────────
@@ -391,7 +402,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // ── Daily stats ──────────────────────────────────────────────────────────────
   const daily = dates.map(d => {
     const revenue   = byDate[d]?.[facilityName] ?? 0;
-    const rawProfit = sourceProfitMap[d] ?? dailyProfitMap[d];
+    const rawProfit = dailyProfitMap[d] ?? sourceProfitMap[d];
     const rawCOGS   = dailyCOGSMap[d];
     // Fall back to the month-level margin estimate when card 3193 has no row for this day
     const profit = rawProfit !== undefined ? rawProfit : Math.round(revenue * marginPct / 100);
@@ -579,6 +590,29 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // Attach the per-day discounts now that card 3191 has been parsed.
   for (const d of daily) d.discount = Math.round(dailyDiscountMap[d.date] ?? 0);
 
+  // ── Do the two sources agree? ───────────────────────────────────────────────
+  // A whole-month view reads gross and discount from cards 2536/2410; any
+  // partial window has to total the daily series instead. Those must match, or
+  // narrowing the dates silently changes the money on screen. When the window
+  // IS a whole month we can measure both and say so, rather than leaving the
+  // mismatch to be noticed by eye.
+  const dailyGrossSum    = daily.reduce((a, d) => a + d.revenue, 0);
+  const dailyDiscountSum = daily.reduce((a, d) => a + d.discount, 0);
+  const near = (a: number, b: number) => (a === 0 && b === 0) || (a !== 0 && Math.abs(b - a) / Math.abs(a) < 0.01);
+
+  const sourceCheck = isWholeMonth
+    ? {
+        checked: true,
+        grossMatches: near(gross, dailyGrossSum),
+        discountMatches: near(discountAmt, dailyDiscountSum),
+        cardGross: gross,
+        dailyGross: Math.round(dailyGrossSum),
+        cardDiscount: discountAmt,
+        dailyDiscount: Math.round(dailyDiscountSum),
+        filledFromSource,
+      }
+    : { checked: false };
+
   return NextResponse.json({
     facility: facilityName,
     monthLabel,
@@ -592,6 +626,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // in Nairobi rather than wherever the viewer's browser happens to be.
     currentMonth: currentPrefix,
     dataStart,
+    sourceCheck,
     today: `${currentPrefix}-${String(nairobiNow.getDate()).padStart(2, '0')}`,
     isCurrentMonth,
     availableMonths,

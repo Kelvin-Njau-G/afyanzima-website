@@ -26,6 +26,18 @@ type DashboardData = {
   windowTo: string;
   isWholeMonth: boolean;
   dataStart: string;
+  sourceCheck:
+    | { checked: false }
+    | {
+        checked: true;
+        grossMatches: boolean;
+        discountMatches: boolean;
+        cardGross: number;
+        dailyGross: number;
+        cardDiscount: number;
+        dailyDiscount: number;
+        filledFromSource: number;
+      };
   isCurrentMonth: boolean;
   availableMonths: Array<{ value: string; label: string }>;
   generatedAt: string;
@@ -682,6 +694,19 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
               ? 'Month-to-date summary'
               : `${data.monthLabel} summary`}
         </p>
+
+        {data.sourceCheck.checked &&
+          !(data.sourceCheck.grossMatches && data.sourceCheck.discountMatches) && (
+            <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
+              Daily figures don&apos;t add up to the monthly totals for {data.monthLabel}
+              {!data.sourceCheck.grossMatches &&
+                ` — gross: ${fmt(data.sourceCheck.cardGross)} monthly vs ${fmt(data.sourceCheck.dailyGross)} daily`}
+              {!data.sourceCheck.discountMatches &&
+                ` — discounts: ${fmt(data.sourceCheck.cardDiscount)} monthly vs ${fmt(data.sourceCheck.dailyDiscount)} daily`}
+              . Narrowing the dates uses the daily figures, so those totals will differ
+              from the whole-month view until the sources are reconciled.
+            </p>
+          )}
 
         <div className={`mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5 ${monthLoading ? 'opacity-40' : ''}`}>
           {[
