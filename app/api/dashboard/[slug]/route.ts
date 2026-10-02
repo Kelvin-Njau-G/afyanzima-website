@@ -195,6 +195,69 @@ function dailyByProductQuery(facilityName: string, from: string, toExclusive: st
   };
 }
 
+/** Metabase refuses to return more than this many unaggregated rows per query. */
+const MB_BARE_ROW_CAP = 2000;
+
+/** Days between two ISO dates. */
+function daysBetween(from: string, toExclusive: string): number {
+  return Math.round(
+    (Date.parse(`${toExclusive}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+function addDays(d: string, n: number): string {
+  const dt = new Date(`${d}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Fetch card 3191's rows for a window, splitting the date range when needed.
+ *
+ * /api/dataset silently truncates unaggregated results at 2000 rows — no error,
+ * no flag, just fewer rows than asked for. A busy facility produces well over
+ * that in a month (one row per transaction line), so discounts summed to about
+ * 40% of the real figure and the by-product table quietly dropped most of its
+ * rows.
+ *
+ * When a chunk comes back exactly at the cap we assume it was truncated and
+ * split it in two, recursing until each piece fits. A month that needs it costs
+ * a handful of extra queries; one that doesn't costs nothing.
+ */
+async function fetchByProductChunked(
+  facilityName: string,
+  from: string,
+  toExclusive: string,
+  token: string,
+  depth = 0,
+): Promise<{ data: { cols: MbCol[]; rows: unknown[][] }; complete: boolean }> {
+  const res = (await mbFetch(
+    '/api/dataset',
+    dailyByProductQuery(facilityName, from, toExclusive),
+    token,
+  )) as MbResult;
+
+  const rows = res?.data?.rows ?? [];
+  const span = daysBetween(from, toExclusive);
+
+  // Under the cap, or down to a single day we can't split further.
+  if (rows.length < MB_BARE_ROW_CAP || span <= 1 || depth >= 6) {
+    return { data: res.data, complete: rows.length < MB_BARE_ROW_CAP };
+  }
+
+  const mid = addDays(from, Math.floor(span / 2));
+  const [left, right] = await Promise.all([
+    fetchByProductChunked(facilityName, from, mid, token, depth + 1),
+    fetchByProductChunked(facilityName, mid, toExclusive, token, depth + 1),
+  ]);
+
+  return {
+    data: { cols: left.data.cols.length ? left.data.cols : right.data.cols,
+            rows: [...left.data.rows, ...right.data.rows] },
+    complete: left.complete && right.complete,
+  };
+}
+
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
   const { slug } = params;
   const facility = await getFacility(slug);
@@ -325,7 +388,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/dataset', dailySeriesQuery(facilityName, windowFrom, windowEndExclusive), token), // 9: daily revenue + profit
     // Column names inside a saved card can be renamed, so a failure here is
     // survivable: fall back to the unfiltered card fetch above.
-    mbFetch('/api/dataset', dailyByProductQuery(facilityName, windowFrom, windowEndExclusive), token)
+    fetchByProductChunked(facilityName, windowFrom, windowEndExclusive, token)
       .catch(() => null),                                                                           // 10: windowed by-product rows
   ];
   if (isQaalane) {
@@ -336,10 +399,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const results = await Promise.all(fetches) as MbResult[];
   const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdCardRes, monthsRes, dailySeriesRes, dailyByProdWindowRes] = results;
 
-  // Prefer the windowed query; fall back to the raw card if it didn't work.
-  const dailyByProdRes =
-    dailyByProdWindowRes?.data?.rows?.length ? dailyByProdWindowRes : dailyByProdCardRes;
-  const byProductWindowed = dailyByProdRes === dailyByProdWindowRes;
+  // Prefer the chunked windowed fetch; fall back to the raw card if it failed.
+  const chunked = dailyByProdWindowRes as unknown as
+    { data: { cols: MbCol[]; rows: unknown[][] }; complete: boolean } | null;
+  const dailyByProdRes: MbResult = chunked?.data?.rows?.length ? chunked : dailyByProdCardRes;
+  // False means the rows may be truncated, so discounts could be understated.
+  const byProductWindowed = !!chunked?.data?.rows?.length && chunked.complete;
 
   // ── Daily revenue ────────────────────────────────────────────────────────────
   // Revenue source order matters, and it is NOT arbitrary.
