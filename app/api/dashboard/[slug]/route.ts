@@ -635,8 +635,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // narrowing the dates silently changes the money on screen. When the window
   // IS a whole month we can measure both and say so, rather than leaving the
   // mismatch to be noticed by eye.
-  const dailyGrossSum    = daily.reduce((a, d) => a + d.revenue, 0);
+  // The daily revenue series is NET of discounts, so reconstructing gross means
+  // adding the discounts back. Comparing the net sum against card 2536's gross
+  // guaranteed a mismatch of exactly the discount amount every time — which is
+  // what the alert was reporting, rather than a real data problem.
+  const dailyNetSum      = daily.reduce((a, d) => a + d.revenue, 0);
   const dailyDiscountSum = daily.reduce((a, d) => a + d.discount, 0);
+  const dailyGrossSum    = dailyNetSum + dailyDiscountSum;
   const near = (a: number, b: number) => (a === 0 && b === 0) || (a !== 0 && Math.abs(b - a) / Math.abs(a) < 0.01);
 
   const sourceCheck = isWholeMonth
@@ -646,6 +651,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
         discountMatches: near(discountAmt, dailyDiscountSum),
         cardGross: gross,
         dailyGross: Math.round(dailyGrossSum),
+        cardNet: net,
+        dailyNet: Math.round(dailyNetSum),
+        netMatches: near(net, dailyNetSum),
         cardDiscount: discountAmt,
         dailyDiscount: Math.round(dailyDiscountSum),
         filledFromSource,

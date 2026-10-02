@@ -36,6 +36,9 @@ type DashboardData = {
         discountMatches: boolean;
         cardGross: number;
         dailyGross: number;
+        cardNet: number;
+        dailyNet: number;
+        netMatches: boolean;
         cardDiscount: number;
         dailyDiscount: number;
         filledFromSource: number;
@@ -715,11 +718,13 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         {data.sourceCheck.checked &&
           !data.sourceCheck.grossMatches && (
             <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
-              Daily figures don&apos;t add up to the monthly totals for {data.monthLabel}
-              {!data.sourceCheck.grossMatches &&
-                ` — gross: ${fmt(data.sourceCheck.cardGross)} monthly vs ${fmt(data.sourceCheck.dailyGross)} daily`}
-              . Narrowing the dates uses the daily figures, so those totals will differ
-              from the whole-month view until the sources are reconciled.
+              Daily figures don&apos;t add up to the monthly totals for {data.monthLabel} — gross:{' '}
+              {fmt(data.sourceCheck.cardGross)} monthly vs {fmt(data.sourceCheck.dailyGross)} daily
+              {!data.sourceCheck.netMatches &&
+                `, net: ${fmt(data.sourceCheck.cardNet)} vs ${fmt(data.sourceCheck.dailyNet)}`}
+              , discounts: {fmt(data.sourceCheck.cardDiscount)} vs{' '}
+              {fmt(data.sourceCheck.dailyDiscount)}. Narrowing the dates uses the daily
+              figures, so those totals will differ from the whole-month view.
             </p>
           )}
 
