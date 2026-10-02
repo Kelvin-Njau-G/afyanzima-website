@@ -168,6 +168,33 @@ function dailySeriesQuery(facilityName: string, from: string, toExclusive: strin
   };
 }
 
+/**
+ * Card 3191's rows for one facility and date window.
+ *
+ * Fetching the card directly returns individual transaction lines and hits
+ * Metabase's 2000-row response cap, so older dates fall off the end entirely —
+ * which is why discounts summed to zero for September while revenue (from a
+ * pre-aggregated card) was complete.
+ *
+ * Querying the saved card AS A SOURCE TABLE pushes the date filter into the
+ * database, so only the window's rows come back and the cap stops mattering.
+ */
+function dailyByProductQuery(facilityName: string, from: string, toExclusive: string) {
+  return {
+    database: 5,
+    type: 'query',
+    query: {
+      'source-table': 'card__3191',
+      filter: ['and',
+        ['=', ['field', 'Organization_Name', { 'base-type': 'type/Text' }], facilityName],
+        ['>=', ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ' }], `${from}T00:00:00`],
+        ['<',  ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ' }], `${toExclusive}T00:00:00`],
+      ],
+      limit: 20000,
+    },
+  };
+}
+
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
   const { slug } = params;
   const facility = await getFacility(slug);
@@ -296,14 +323,23 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/card/3191/query', {}, token),   // 7: daily sales by product
     mbFetch('/api/dataset', monthsWithSalesQuery(facilityName), token),                       // 8: months with sales
     mbFetch('/api/dataset', dailySeriesQuery(facilityName, windowFrom, windowEndExclusive), token), // 9: daily revenue + profit
+    // Column names inside a saved card can be renamed, so a failure here is
+    // survivable: fall back to the unfiltered card fetch above.
+    mbFetch('/api/dataset', dailyByProductQuery(facilityName, windowFrom, windowEndExclusive), token)
+      .catch(() => null),                                                                           // 10: windowed by-product rows
   ];
   if (isQaalane) {
-    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 500), token)); // 10
-    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 11
+    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 500), token)); // 11
+    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 12
   }
 
   const results = await Promise.all(fetches) as MbResult[];
-  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes, monthsRes, dailySeriesRes] = results;
+  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdCardRes, monthsRes, dailySeriesRes, dailyByProdWindowRes] = results;
+
+  // Prefer the windowed query; fall back to the raw card if it didn't work.
+  const dailyByProdRes =
+    dailyByProdWindowRes?.data?.rows?.length ? dailyByProdWindowRes : dailyByProdCardRes;
+  const byProductWindowed = dailyByProdRes === dailyByProdWindowRes;
 
   // ── Daily revenue ────────────────────────────────────────────────────────────
   // Revenue source order matters, and it is NOT arbitrary.
@@ -560,9 +596,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   // Indices 10/11, not 8/9 — the months and daily-series queries were appended
   // to the base fetch list above, shifting the Qaalane extras along by two.
-  if (isQaalane && results[10] && results[11]) {
-    const allProdRes  = results[10];
-    const invPriceRes = results[11];
+  if (isQaalane && results[11] && results[12]) {
+    const allProdRes  = results[11];
+    const invPriceRes = results[12];
 
     // Build buying price lookup: SKU → avg_buying_price
     // card 2501 cols: org_name, sku, product_name, molecular_name, qty, inv_value, avg_buying_price, last_restock
@@ -587,7 +623,10 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       .sort((a, b) => b.revenue - a.revenue);
   }
 
-  // Attach the per-day discounts now that card 3191 has been parsed.
+  // ── Per-day discounts ───────────────────────────────────────────────────────
+  // Real figures, summed from the Discount column on card 3191's transaction
+  // rows. Nothing is estimated or spread: if a day had no discount it shows
+  // zero because none was given, not because the data didn't arrive.
   for (const d of daily) d.discount = Math.round(dailyDiscountMap[d.date] ?? 0);
 
   // ── Do the two sources agree? ───────────────────────────────────────────────
@@ -627,6 +666,14 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     currentMonth: currentPrefix,
     dataStart,
     sourceCheck,
+    // Daily revenue from card 2262 is already net of discounts, whereas card
+    // 2536's `gross` is before them. The client needs to know which it holds,
+    // or it labels the net total as gross — which is exactly what it was doing.
+    dailyRevenueIsNet: true,
+    // False means the by-product rows came from the unfiltered card fetch and
+    // may be truncated, so daily discounts could be understated. Surfaced
+    // rather than hidden, since the alternative is quietly wrong money.
+    byProductWindowed,
     today: `${currentPrefix}-${String(nairobiNow.getDate()).padStart(2, '0')}`,
     isCurrentMonth,
     availableMonths,

@@ -26,6 +26,8 @@ type DashboardData = {
   windowTo: string;
   isWholeMonth: boolean;
   dataStart: string;
+  dailyRevenueIsNet: boolean;
+  byProductWindowed: boolean;
   sourceCheck:
     | { checked: false }
     | {
@@ -514,10 +516,15 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
         avgDaily: m.avgDaily, projected: m.projected, computed: false,
       };
     }
-    const gross       = filteredDaily.reduce((a, d) => a + d.revenue, 0);
+    // The daily series is NET of discounts (card 2262's definition), so gross
+    // is net PLUS discounts — not minus. Reading it the other way round made a
+    // narrowed range show the net total under a "Gross revenue" label with no
+    // discounts beneath it.
+    const netSum      = filteredDaily.reduce((a, d) => a + d.revenue, 0);
     const grossProfit = filteredDaily.reduce((a, d) => a + d.profit, 0);
     const discountAmt = filteredDaily.reduce((a, d) => a + d.discount, 0);
-    const net         = gross - discountAmt;
+    const net         = netSum;
+    const gross       = data?.dailyRevenueIsNet ? netSum + discountAmt : netSum;
     const marginPct   = gross ? Math.round((grossProfit / gross) * 1000) / 10 : 0;
     const days        = filteredDaily.filter((d) => d.revenue > 0).length;
     return {
@@ -527,8 +534,10 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       netMarginPct: gross ? Math.round((net / gross) * marginPct * 10) / 10 : 0,
       grossProfit,
       netProfit: grossProfit - discountAmt,
-      avgDaily: days ? Math.round(gross / days) : 0,
-      projected: data?.isCurrentMonth && days ? Math.round((gross / days) * m.daysInMonth) : gross,
+      // Averages and the projection track the revenue series the chart draws,
+      // which is the net one.
+      avgDaily: days ? Math.round(netSum / days) : 0,
+      projected: data?.isCurrentMonth && days ? Math.round((netSum / days) * m.daysInMonth) : netSum,
       computed: true,
     };
   }, [data, filteredDaily, useDailyTotals]);
@@ -695,14 +704,20 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
               : `${data.monthLabel} summary`}
         </p>
 
+        {!data.byProductWindowed && (
+          <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
+            Product-level rows were loaded without a date filter and may be cut off by
+            Metabase&apos;s row limit, so discounts for a narrowed range could be
+            understated. Whole-month figures are unaffected.
+          </p>
+        )}
+
         {data.sourceCheck.checked &&
-          !(data.sourceCheck.grossMatches && data.sourceCheck.discountMatches) && (
+          !data.sourceCheck.grossMatches && (
             <p className="mb-2.5 text-[11px] leading-relaxed text-amber-700">
               Daily figures don&apos;t add up to the monthly totals for {data.monthLabel}
               {!data.sourceCheck.grossMatches &&
                 ` — gross: ${fmt(data.sourceCheck.cardGross)} monthly vs ${fmt(data.sourceCheck.dailyGross)} daily`}
-              {!data.sourceCheck.discountMatches &&
-                ` — discounts: ${fmt(data.sourceCheck.cardDiscount)} monthly vs ${fmt(data.sourceCheck.dailyDiscount)} daily`}
               . Narrowing the dates uses the daily figures, so those totals will differ
               from the whole-month view until the sources are reconciled.
             </p>
