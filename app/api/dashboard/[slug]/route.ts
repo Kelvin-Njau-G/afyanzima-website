@@ -111,6 +111,63 @@ function topProductsQuery(facilityName: string, monthStart: string, monthEnd: st
   };
 }
 
+/**
+ * Months this facility has sales in, newest first.
+ *
+ * Queried straight from the transaction source rather than read off card 2262.
+ * The saved cards carry their own filters in Metabase — several only return
+ * recent data — so deriving the month list from one of them silently hides
+ * history. Asking the source directly is one extra round trip and can't go
+ * stale behind someone editing a card.
+ */
+function monthsWithSalesQuery(facilityName: string) {
+  return {
+    database: 5,
+    type: 'query',
+    query: {
+      'source-table': 'card__1788',
+      filter: ['and',
+        ['=', ['field', 'Department', { 'base-type': 'type/Text' }], 'Pharmacy'],
+        ['=', ['field', 'Organization_Name', { 'base-type': 'type/Text' }], facilityName],
+      ],
+      aggregation: [['sum', ['field', 'Sale_Amount', { 'base-type': 'type/Float' }]]],
+      breakout: [['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'month' }]],
+      'order-by': [['desc', ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'month' }]]],
+      limit: 120,
+    },
+  };
+}
+
+/**
+ * Daily revenue and profit for the window, from the same transaction source.
+ *
+ * Cards 2262 and 3193 supplied these before, and are kept as a fallback, but
+ * they can't be trusted to reach back beyond the current month for the reason
+ * above — which would leave a past month showing empty charts.
+ */
+function dailySeriesQuery(facilityName: string, from: string, toExclusive: string) {
+  return {
+    database: 5,
+    type: 'query',
+    query: {
+      'source-table': 'card__1788',
+      filter: ['and',
+        ['=', ['field', 'Department', { 'base-type': 'type/Text' }], 'Pharmacy'],
+        ['=', ['field', 'Organization_Name', { 'base-type': 'type/Text' }], facilityName],
+        ['>=', ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'minute' }], `${from}T00:00:00`],
+        ['<',  ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'minute' }], `${toExclusive}T00:00:00`],
+      ],
+      aggregation: [
+        ['sum', ['field', 'Sale_Amount', { 'base-type': 'type/Float' }]],
+        ['sum', ['field', 'Profit',      { 'base-type': 'type/Float' }]],
+      ],
+      breakout: [['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'day' }]],
+      'order-by': [['asc', ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': 'day' }]]],
+      limit: 400,
+    },
+  };
+}
+
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
   const { slug } = params;
   const facility = await getFacility(slug);
@@ -237,27 +294,46 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     mbFetch('/api/card/1661/query', {}, token),   // 5: monthly restock value
     mbFetch('/api/card/3193/query', {}, token),   // 6: daily COGS & profit
     mbFetch('/api/card/3191/query', {}, token),   // 7: daily sales by product
+    mbFetch('/api/dataset', monthsWithSalesQuery(facilityName), token),                       // 8: months with sales
+    mbFetch('/api/dataset', dailySeriesQuery(facilityName, windowFrom, windowEndExclusive), token), // 9: daily revenue + profit
   ];
   if (isQaalane) {
-    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 500), token)); // 8
-    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 9
+    fetches.push(mbFetch('/api/dataset', topProductsQuery(facilityName, monthStart, monthEndExclusive, 500), token)); // 10
+    fetches.push(mbFetch('/api/card/2501/query', {}, token)); // 11
   }
 
   const results = await Promise.all(fetches) as MbResult[];
-  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes] = results;
+  const [dailyRes, discRes, marginRes, topProdRes, invByClassRes, restockRes, dailyProfitRes, dailyByProdRes, monthsRes, dailySeriesRes] = results;
 
   // ── Daily revenue ────────────────────────────────────────────────────────────
-  const monthRows = dailyRes.data.rows.filter(
-    r => typeof r[0] === 'string' && inWindow(r[0].slice(0, 10))
-  );
+  // Preferred source: the window-bounded query against the transaction table,
+  // which is guaranteed to cover whatever range was asked for.
+  const seriesRows = dailySeriesRes?.data?.rows ?? [];
   const byDate: Record<string, Record<string, number>> = {};
-  const activeFacilities = new Set<string>();
-  for (const row of monthRows) {
-    const d = (row[0] as string).slice(0, 10);
-    const fac = row[1] as string;
+  const activeFacilities = new Set<string>([facilityName]);
+  const sourceProfitMap: Record<string, number> = {};
+
+  for (const row of seriesRows) {
+    if (typeof row[0] !== 'string') continue;
+    const d = row[0].slice(0, 10);
+    if (!inWindow(d)) continue;
     byDate[d] ??= {};
-    byDate[d][fac] = Math.round((row[2] as number) || 0);
-    activeFacilities.add(fac);
+    byDate[d][facilityName] = Math.round((row[1] as number) || 0);
+    sourceProfitMap[d] = Math.round((row[2] as number) || 0);
+  }
+
+  // Fallback to card 2262 if that query returned nothing — keeps the dashboard
+  // working if the source table is ever renamed out from under us.
+  if (!Object.keys(byDate).length) {
+    for (const row of dailyRes.data.rows) {
+      if (typeof row[0] !== 'string') continue;
+      const d = row[0].slice(0, 10);
+      if (!inWindow(d)) continue;
+      const fac = row[1] as string;
+      byDate[d] ??= {};
+      byDate[d][fac] = Math.round((row[2] as number) || 0);
+      activeFacilities.add(fac);
+    }
   }
   const dates = Object.keys(byDate).sort();
 
@@ -315,7 +391,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // ── Daily stats ──────────────────────────────────────────────────────────────
   const daily = dates.map(d => {
     const revenue   = byDate[d]?.[facilityName] ?? 0;
-    const rawProfit = dailyProfitMap[d];
+    const rawProfit = sourceProfitMap[d] ?? dailyProfitMap[d];
     const rawCOGS   = dailyCOGSMap[d];
     // Fall back to the month-level margin estimate when card 3193 has no row for this day
     const profit = rawProfit !== undefined ? rawProfit : Math.round(revenue * marginPct / 100);
@@ -351,23 +427,21 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     }));
 
   // ── Months this facility has data for ───────────────────────────────────────
-  // Card 2262 carries one row per day per facility across the full history, so
-  // it's the cheapest honest source for "which months can this partner open?".
-  // Built from data already fetched — no extra Metabase round trip.
+  // Straight from the transaction source, so it reflects real history rather
+  // than whatever date filter a saved card happens to carry.
   const monthSet = new Set<string>();
-  let dataStart = todayStr;
-  for (const row of dailyRes.data.rows) {
+  for (const row of monthsRes?.data?.rows ?? []) {
     if (typeof row[0] !== 'string') continue;
-    if (row[1] !== facilityName) continue;
-    if (((row[2] as number) || 0) <= 0) continue;
+    if (((row[1] as number) || 0) <= 0) continue;
     monthSet.add(row[0].slice(0, 7));
-    const d = row[0].slice(0, 10);
-    if (d < dataStart) dataStart = d;
   }
   // Always offer the current month, even before the first sale lands in it.
   monthSet.add(currentPrefix);
-  const availableMonths = Array.from(monthSet)
-    .sort()
+
+  const sortedMonths = Array.from(monthSet).sort();
+  const dataStart = sortedMonths.length ? `${sortedMonths[0]}-01` : todayStr;
+
+  const availableMonths = sortedMonths
     .reverse()
     .map(prefix => {
       const [y, mo] = prefix.split('-').map(Number);
@@ -473,9 +547,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     sellingPrice: number | null; margin: number; revenue: number; qty: number;
   }> = [];
 
-  if (isQaalane && results[8] && results[9]) {
-    const allProdRes  = results[8];
-    const invPriceRes = results[9];
+  // Indices 10/11, not 8/9 — the months and daily-series queries were appended
+  // to the base fetch list above, shifting the Qaalane extras along by two.
+  if (isQaalane && results[10] && results[11]) {
+    const allProdRes  = results[10];
+    const invPriceRes = results[11];
 
     // Build buying price lookup: SKU → avg_buying_price
     // card 2501 cols: org_name, sku, product_name, molecular_name, qty, inv_value, avg_buying_price, last_restock
