@@ -29,7 +29,7 @@ type OverviewData = {
   comparison: Record<string, {
     thisAvgDaily: number; thisMargin: number;
     prevAvgDaily: number | null; prevMargin: number | null;
-    prevMonths: number; since: string | null;
+    baselineMonths: string[];
   }>;
   commercial: {
     topProducts: TopProduct[];
@@ -79,6 +79,16 @@ function dayLabel(d: string): string {
 
 function monthName(prefix: string): string {
   return new Date(`${prefix}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** "Jul–Sep 2026", "Sep 2026", or a note when there's no full month yet. */
+function baselineLabel(months: string[]): string {
+  if (!months.length) return 'No full month yet';
+  const first = monthName(months[0]);
+  if (months.length === 1) return first;
+  const last = monthName(months[months.length - 1]);
+  const sameYear = months[0].slice(0, 4) === months[months.length - 1].slice(0, 4);
+  return `${sameYear ? first.split(' ')[0] : first}–${last}`;
 }
 
 function Section({ title, sub }: { title: string; sub?: string }) {
@@ -524,7 +534,7 @@ export default function OverviewDashboard() {
         </div>
 
         {/* This month vs previous months */}
-        <Label>This month vs average of all previous months</Label>
+        <Label>This month vs average of last 3 full months</Label>
         <div className={tableWrap}>
           <table className="w-full text-sm">
             <thead>
@@ -536,10 +546,10 @@ export default function OverviewDashboard() {
               </tr>
               <tr className={headRow}>
                 <th className={`${thR} border-l border-gray-100`}>This month</th>
-                <th className={thR}>Prev. avg</th>
+                <th className={thR}>3-mo avg</th>
                 <th className={thR}>Change</th>
                 <th className={`${thR} border-l border-gray-100`}>This month</th>
-                <th className={thR}>Prev. avg</th>
+                <th className={thR}>3-mo avg</th>
                 <th className={thR}>Change</th>
               </tr>
             </thead>
@@ -556,7 +566,7 @@ export default function OverviewDashboard() {
                     <td className={`${tdR} text-gray-700`}>{c.prevMargin == null ? '—' : `${c.prevMargin}%`}</td>
                     <td className={tdR}><Change value={c.prevMargin == null ? null : c.thisMargin - c.prevMargin} unit=" pts" /></td>
                     <td className={`${tdR} border-l border-gray-100 text-[11px] text-gray-500`}>
-                      {c.prevMonths ? `${c.prevMonths} mo since ${monthName(c.since!)}` : 'First month'}
+                      {baselineLabel(c.baselineMonths)}
                     </td>
                   </tr>
                 );

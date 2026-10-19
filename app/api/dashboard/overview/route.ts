@@ -328,13 +328,20 @@ export async function POST(req: NextRequest) {
     totalRestockValue: 0,
   };
 
-  // ── This month vs the average of all previous months ──────────────────────
-  // Each previous month contributes its own average net revenue per trading day
-  // and its own GP margin; the baseline is the plain mean of those months.
+  // ── This month vs the last 3 full months ──────────────────────────────────
+  // Each baseline month contributes its own average net revenue per trading day
+  // and its own GP margin (net revenue − COGS) / net revenue; the baseline is
+  // the plain mean of those months. Months with fewer than BASELINE_MIN_DAYS
+  // trading days are skipped: a facility's onboarding month is usually partial
+  // and its prices are still being set up (Healmerc's June 2026 shows net
+  // revenue above list price and a 56% margin), which skewed an all-history
+  // average far away from how the facility normally runs.
+  const BASELINE_MONTHS = 3;
+  const BASELINE_MIN_DAYS = 20;
   const comparison: Record<string, {
     thisAvgDaily: number; thisMargin: number;
     prevAvgDaily: number | null; prevMargin: number | null;
-    prevMonths: number; since: string | null;
+    baselineMonths: string[];
   }> = {};
   const historyByFacility: Record<string, Array<[string, { net: number; profit: number; days: number }]>> = {};
   for (const row of historyRes?.data?.rows ?? []) {
@@ -343,7 +350,10 @@ export async function POST(req: NextRequest) {
     (historyByFacility[fac] ??= []).push([String(row[0]).slice(0, 7), { net: num(row[2]), profit: num(row[3]), days: num(row[4]) }]);
   }
   allFacilities.forEach((fac) => {
-    const valid = (historyByFacility[fac] ?? []).filter(([, v]) => v.days > 0 && v.net > 0).sort(([a], [b]) => a.localeCompare(b));
+    const valid = (historyByFacility[fac] ?? [])
+      .filter(([, v]) => v.days >= BASELINE_MIN_DAYS && v.net > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-BASELINE_MONTHS);
     const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
     const prevAvg = mean(valid.map(([, v]) => v.net / v.days));
     const prevMargin = mean(valid.map(([, v]) => (v.profit / v.net) * 100));
@@ -352,8 +362,7 @@ export async function POST(req: NextRequest) {
       thisMargin: facilitySummary[fac].marginPct,
       prevAvgDaily: prevAvg == null ? null : round(prevAvg),
       prevMargin: prevMargin == null ? null : Math.round(prevMargin * 10) / 10,
-      prevMonths: valid.length,
-      since: valid[0]?.[0] ?? null,
+      baselineMonths: valid.map(([m]) => m),
     };
   });
 
