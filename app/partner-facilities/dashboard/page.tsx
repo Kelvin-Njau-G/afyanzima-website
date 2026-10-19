@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CodeCheckSection from '@/components/code-check-section';
+import type { CodeCheckData } from '@/lib/dashboard/code-check';
 
 type DayFigures = { gross: number; discount: number; net: number; profit: number };
 
@@ -145,6 +147,8 @@ export default function OverviewDashboard() {
   const [drillDate, setDrillDate] = useState<string>('');
   // Per-facility top products, fetched the first time a facility is selected.
   const [facilityTop, setFacilityTop] = useState<Record<string, TopProduct[] | 'loading' | 'error'>>({});
+  // M-Pesa code check: slow (~20s), so loaded after the rest of the page.
+  const [codeCheck, setCodeCheck] = useState<CodeCheckData | 'loading' | 'error' | null>(null);
 
   const stackRef = useRef<HTMLCanvasElement>(null);
   const stackChartRef = useRef<unknown>(null);
@@ -227,6 +231,23 @@ export default function OverviewDashboard() {
       .catch(() => setFacilityTop((m) => ({ ...m, [facility]: 'error' })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, facility]);
+
+  function loadCodeCheck() {
+    setCodeCheck('loading');
+    fetch('/api/dashboard/overview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, codeCheck: true }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j: { codeCheck: CodeCheckData }) => setCodeCheck(j.codeCheck))
+      .catch(() => setCodeCheck('error'));
+  }
+
+  useEffect(() => {
+    if (data && codeCheck === null) loadCodeCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // Keep the drill-down pointed at a facility that's in scope.
   useEffect(() => {
@@ -633,6 +654,13 @@ export default function OverviewDashboard() {
             )}
           </>
         )}
+
+        {/* ── M-PESA CODE CHECK ─────────────────────────── */}
+        <Section
+          title="M-Pesa code check"
+          sub="Last 8 days · every bill payment should carry its own M-Pesa code that is in the paybill and covers the bill. Click a cell to see which bills and which staff."
+        />
+        <CodeCheckSection state={codeCheck} onRetry={loadCodeCheck} scope={facs} shortName={shortName} />
 
         {/* ── DISCOUNTS ──────────────────────────────────── */}
         <Section title="Discounts" sub="Daily discounts per facility. Click any amount to see which staff gave it." />

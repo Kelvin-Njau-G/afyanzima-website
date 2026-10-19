@@ -3,6 +3,7 @@ import https from 'https';
 import { checkDashboardPassword } from '@/lib/facilities';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
 import { portalDb } from '@/lib/portal/db';
+import { CODE_CHECK_CARD, parseCodeCheck } from '@/lib/dashboard/code-check';
 
 // A dozen-odd Metabase queries run per load; give them room on Vercel.
 export const maxDuration = 60;
@@ -212,6 +213,16 @@ export async function POST(req: NextRequest) {
   const token = auth.id;
   const dataset = (q: object) => mbFetch('/api/dataset', q, token) as Promise<MbResult>;
   const card    = (id: number) => mbFetch(`/api/card/${id}/query`, {}, token) as Promise<MbResult>;
+
+  // The M-Pesa code check reads a Google Sheet and takes ~20s, so the page
+  // asks for it separately once everything else has rendered.
+  if (body?.codeCheck) {
+    const res = await safe('code check', card(CODE_CHECK_CARD));
+    const codeCheck = res ? parseCodeCheck(res) : null;
+    return codeCheck
+      ? NextResponse.json({ codeCheck })
+      : NextResponse.json({ error: 'Code check unavailable' }, { status: 502 });
+  }
 
   // A single facility's top products are fetched on demand, when the facility
   // filter is used — running all of them up front doubled the page load time.

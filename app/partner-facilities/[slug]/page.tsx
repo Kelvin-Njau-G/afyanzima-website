@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardFilters, { type Filters, type RangeIntent } from '@/components/dashboard-filters';
+import CodeCheckSection from '@/components/code-check-section';
+import type { CodeCheckData } from '@/lib/dashboard/code-check';
 
 type DailyEntry = {
   date: string; label: string; revenue: number; cogs: number; profit: number; discount: number;
@@ -200,6 +202,9 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
   // i.e. the current month on first load.
   const [month, setMonth]         = useState<string | null>(null);
   const [monthLoading, setMonthLoading] = useState(false);
+  // M-Pesa code check: always the last 8 days, whatever window is on screen.
+  // Slow (~20s), so it loads after the rest of the dashboard.
+  const [codeCheck, setCodeCheck] = useState<CodeCheckData | 'loading' | 'error' | null>(null);
 
   const dailyRef      = useRef<HTMLCanvasElement>(null);
   const dailyChartRef = useRef<unknown>(null);
@@ -285,6 +290,23 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
       setLoading(false);
     }
   }
+
+  function loadCodeCheck() {
+    setCodeCheck('loading');
+    fetch(`/api/dashboard/${params.slug}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codeCheck: true, password: password || undefined }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j: { codeCheck: CodeCheckData }) => setCodeCheck(j.codeCheck))
+      .catch(() => setCodeCheck('error'));
+  }
+
+  useEffect(() => {
+    if (data && codeCheck === null) loadCodeCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   useEffect(() => {
     if (!data) return;
@@ -937,6 +959,14 @@ export default function PartnerDashboard({ params }: { params: { slug: string } 
             </tbody>
           </table>
         </div>
+
+        {/* ── M-PESA CODE CHECK ─────────────────────────────── */}
+        {/* Fixed to the last 8 days: the filters above don't apply here. */}
+        <SectionHeader title="M-Pesa code check · last 8 days" />
+        <p className="-mt-2 mb-4 text-[11px] text-gray-400">
+          Every bill payment should carry its own M-Pesa code that is in the paybill and covers the bill. Click a day to see which bills need fixing.
+        </p>
+        <CodeCheckSection state={codeCheck} onRetry={loadCodeCheck} />
 
         {/* ── INVENTORY ──────────────────────────────────────── */}
         <SectionHeader title="Inventory" />
