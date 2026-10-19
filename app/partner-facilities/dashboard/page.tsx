@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CodeCheckSection from '@/components/code-check-section';
+import type { CodeCheckData } from '@/lib/dashboard/code-check';
 
 type DayFigures = { gross: number; discount: number; net: number; profit: number };
 
@@ -29,7 +31,7 @@ type OverviewData = {
   comparison: Record<string, {
     thisAvgDaily: number; thisMargin: number;
     prevAvgDaily: number | null; prevMargin: number | null;
-    prevMonths: number; since: string | null;
+    baselineMonths: string[];
   }>;
   commercial: {
     topProducts: TopProduct[];
@@ -79,6 +81,16 @@ function dayLabel(d: string): string {
 
 function monthName(prefix: string): string {
   return new Date(`${prefix}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** "Jul–Sep 2026", "Sep 2026", or a note when there's no full month yet. */
+function baselineLabel(months: string[]): string {
+  if (!months.length) return 'No full month yet';
+  const first = monthName(months[0]);
+  if (months.length === 1) return first;
+  const last = monthName(months[months.length - 1]);
+  const sameYear = months[0].slice(0, 4) === months[months.length - 1].slice(0, 4);
+  return `${sameYear ? first.split(' ')[0] : first}–${last}`;
 }
 
 function Section({ title, sub }: { title: string; sub?: string }) {
@@ -135,6 +147,8 @@ export default function OverviewDashboard() {
   const [drillDate, setDrillDate] = useState<string>('');
   // Per-facility top products, fetched the first time a facility is selected.
   const [facilityTop, setFacilityTop] = useState<Record<string, TopProduct[] | 'loading' | 'error'>>({});
+  // M-Pesa code check: slow (~20s), so loaded after the rest of the page.
+  const [codeCheck, setCodeCheck] = useState<CodeCheckData | 'loading' | 'error' | null>(null);
 
   const stackRef = useRef<HTMLCanvasElement>(null);
   const stackChartRef = useRef<unknown>(null);
@@ -217,6 +231,23 @@ export default function OverviewDashboard() {
       .catch(() => setFacilityTop((m) => ({ ...m, [facility]: 'error' })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, facility]);
+
+  function loadCodeCheck() {
+    setCodeCheck('loading');
+    fetch('/api/dashboard/overview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, codeCheck: true }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j: { codeCheck: CodeCheckData }) => setCodeCheck(j.codeCheck))
+      .catch(() => setCodeCheck('error'));
+  }
+
+  useEffect(() => {
+    if (data && codeCheck === null) loadCodeCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // Keep the drill-down pointed at a facility that's in scope.
   useEffect(() => {
@@ -458,89 +489,6 @@ export default function OverviewDashboard() {
           ))}
         </div>
 
-        {/* Top 20 products */}
-        <Label>Top 20 products this month — {isAll ? 'all facilities' : shortName(facility)}</Label>
-        <div className={tableWrap}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={headRow}>
-                <th className={th}>#</th>
-                <th className={th}>Product</th>
-                <th className={thR}>Units sold</th>
-                <th className={thR}>Net revenue (KSh)</th>
-                <th className={thR}>GP margin</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(facilityTopState === 'loading' || facilityTopState === 'error') && (
-                <tr><td colSpan={5} className="px-4 py-4 text-center text-xs text-gray-400">
-                  {facilityTopState === 'loading' ? 'Loading products…' : 'Couldn’t load products for this facility.'}
-                </td></tr>
-              )}
-              {topProducts.map((p, i) => (
-                <tr key={p.sku || p.product} className={zebra(i)}>
-                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
-                  <td className="px-4 py-2">
-                    <p className="font-medium text-gray-800">{p.product}</p>
-                    <p className="text-[11px] text-gray-400">{p.sku}</p>
-                  </td>
-                  <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
-                  <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
-                  <td className="px-4 py-2 text-right">
-                    <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
-                      {p.margin}%
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ── INVENTORY ──────────────────────────────────── */}
-        <Section title="Inventory" />
-
-        <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          <div className="rounded-lg bg-gray-100 p-3.5">
-            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total network inventory value' : 'Inventory value'}</p>
-            <p className="text-xl font-medium text-gray-900">{fmt(facs.reduce((s, f) => s + (data.inventory.inventoryByFacility[f] ?? 0), 0))}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
-          </div>
-          <div className="rounded-lg border-l-[3px] border-green-600 bg-gray-100 p-3.5">
-            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total monthly restock value' : 'Monthly restock value'}</p>
-            <p className="text-xl font-medium text-green-700">{fmt(facs.reduce((s, f) => s + (data.inventory.restockByFacility[f] ?? 0), 0))}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
-          </div>
-        </div>
-
-        {isAll && (
-          <>
-            <Label>Inventory & restock per facility</Label>
-            <div className={tableWrap}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className={headRow}>
-                    <th className={th}>Facility</th>
-                    <th className={thR}>Inventory value (KSh)</th>
-                    <th className={thR}>Monthly restock (KSh)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {facs.map((fac, i) => (
-                    <tr key={fac} className={zebra(i)}>
-                      <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{fac}</td>
-                      <td className={`${tdR} text-gray-700`}>{fmt(data.inventory.inventoryByFacility[fac] ?? 0)}</td>
-                      <td className={`${tdR} text-gray-700`}>{fmt(data.inventory.restockByFacility[fac] ?? 0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        <hr className="my-6 border-gray-200" />
-
         {/* ── COMMERCIAL cont. — per-facility summary ─── */}
         <Label>Per-facility commercial summary</Label>
         <div className={tableWrap}>
@@ -586,48 +534,6 @@ export default function OverviewDashboard() {
           </table>
         </div>
 
-        {/* This month vs previous months */}
-        <Label>This month vs average of all previous months</Label>
-        <div className={tableWrap}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className={headRow}>
-                <th className={th} rowSpan={2}>Facility</th>
-                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>Avg net revenue / day (KSh)</th>
-                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>GP margin</th>
-                <th className={`${thR} border-l border-gray-100`} rowSpan={2}>Baseline</th>
-              </tr>
-              <tr className={headRow}>
-                <th className={`${thR} border-l border-gray-100`}>This month</th>
-                <th className={thR}>Prev. avg</th>
-                <th className={thR}>Change</th>
-                <th className={`${thR} border-l border-gray-100`}>This month</th>
-                <th className={thR}>Prev. avg</th>
-                <th className={thR}>Change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {facs.map((fac, i) => {
-                const c = data.comparison[fac];
-                return (
-                  <tr key={fac} className={zebra(i)}>
-                    <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{fac}</td>
-                    <td className={`${tdR} border-l border-gray-100 font-medium text-gray-900`}>{fmt(c.thisAvgDaily)}</td>
-                    <td className={`${tdR} text-gray-700`}>{c.prevAvgDaily == null ? '—' : fmt(c.prevAvgDaily)}</td>
-                    <td className={tdR}><Change value={c.prevAvgDaily ? ((c.thisAvgDaily - c.prevAvgDaily) / c.prevAvgDaily) * 100 : null} /></td>
-                    <td className={`${tdR} border-l border-gray-100 font-medium text-gray-900`}>{c.thisMargin}%</td>
-                    <td className={`${tdR} text-gray-700`}>{c.prevMargin == null ? '—' : `${c.prevMargin}%`}</td>
-                    <td className={tdR}><Change value={c.prevMargin == null ? null : c.thisMargin - c.prevMargin} unit=" pts" /></td>
-                    <td className={`${tdR} border-l border-gray-100 text-[11px] text-gray-500`}>
-                      {c.prevMonths ? `${c.prevMonths} mo since ${monthName(c.since!)}` : 'First month'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
         {/* Stacked chart */}
         <Label>Daily net revenue {isAll ? 'by facility' : `— ${shortName(facility)}`}</Label>
         {isAll && (
@@ -646,6 +552,48 @@ export default function OverviewDashboard() {
             <canvas ref={stackRef} role="img" aria-label="Stacked bar chart of daily net revenue per facility this month." />
           </div>
           <p className="mt-2 text-[11px] text-gray-400">Hover any bar to see net revenue and gross margin per facility</p>
+        </div>
+
+        {/* This month vs previous months */}
+        <Label>This month vs average of last 3 full months</Label>
+        <div className={tableWrap}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={headRow}>
+                <th className={th} rowSpan={2}>Facility</th>
+                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>Avg net revenue / day (KSh)</th>
+                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>GP margin</th>
+                <th className={`${thR} border-l border-gray-100`} rowSpan={2}>Baseline</th>
+              </tr>
+              <tr className={headRow}>
+                <th className={`${thR} border-l border-gray-100`}>This month</th>
+                <th className={thR}>3-mo avg</th>
+                <th className={thR}>Change</th>
+                <th className={`${thR} border-l border-gray-100`}>This month</th>
+                <th className={thR}>3-mo avg</th>
+                <th className={thR}>Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {facs.map((fac, i) => {
+                const c = data.comparison[fac];
+                return (
+                  <tr key={fac} className={zebra(i)}>
+                    <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{fac}</td>
+                    <td className={`${tdR} border-l border-gray-100 font-medium text-gray-900`}>{fmt(c.thisAvgDaily)}</td>
+                    <td className={`${tdR} text-gray-700`}>{c.prevAvgDaily == null ? '—' : fmt(c.prevAvgDaily)}</td>
+                    <td className={tdR}><Change value={c.prevAvgDaily ? ((c.thisAvgDaily - c.prevAvgDaily) / c.prevAvgDaily) * 100 : null} /></td>
+                    <td className={`${tdR} border-l border-gray-100 font-medium text-gray-900`}>{c.thisMargin}%</td>
+                    <td className={`${tdR} text-gray-700`}>{c.prevMargin == null ? '—' : `${c.prevMargin}%`}</td>
+                    <td className={tdR}><Change value={c.prevMargin == null ? null : c.thisMargin - c.prevMargin} unit=" pts" /></td>
+                    <td className={`${tdR} border-l border-gray-100 text-[11px] text-gray-500`}>
+                      {baselineLabel(c.baselineMonths)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         {/* ── RECONCILIATION ─────────────────────────────── */}
@@ -706,6 +654,13 @@ export default function OverviewDashboard() {
             )}
           </>
         )}
+
+        {/* ── M-PESA CODE CHECK ─────────────────────────── */}
+        <Section
+          title="M-Pesa code check"
+          sub="Last 8 days · every bill payment should carry its own M-Pesa code that is in the paybill and covers the bill. Click a cell to see which bills and which staff."
+        />
+        <CodeCheckSection state={codeCheck} onRetry={loadCodeCheck} scope={facs} shortName={shortName} />
 
         {/* ── DISCOUNTS ──────────────────────────────────── */}
         <Section title="Discounts" sub="Daily discounts per facility. Click any amount to see which staff gave it." />
@@ -936,6 +891,90 @@ export default function OverviewDashboard() {
             </table>
           </div>
         )}
+
+        {/* ── INVENTORY ──────────────────────────────────── */}
+        <Section title="Inventory" />
+
+        <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="rounded-lg bg-gray-100 p-3.5">
+            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total network inventory value' : 'Inventory value'}</p>
+            <p className="text-xl font-medium text-gray-900">{fmt(facs.reduce((s, f) => s + (data.inventory.inventoryByFacility[f] ?? 0), 0))}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
+          </div>
+          <div className="rounded-lg border-l-[3px] border-green-600 bg-gray-100 p-3.5">
+            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total monthly restock value' : 'Monthly restock value'}</p>
+            <p className="text-xl font-medium text-green-700">{fmt(facs.reduce((s, f) => s + (data.inventory.restockByFacility[f] ?? 0), 0))}</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
+          </div>
+        </div>
+
+        {isAll && (
+          <>
+            <Label>Inventory & restock per facility</Label>
+            <div className={tableWrap}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={headRow}>
+                    <th className={th}>Facility</th>
+                    <th className={thR}>Inventory value (KSh)</th>
+                    <th className={thR}>Monthly restock (KSh)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {facs.map((fac, i) => (
+                    <tr key={fac} className={zebra(i)}>
+                      <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{fac}</td>
+                      <td className={`${tdR} text-gray-700`}>{fmt(data.inventory.inventoryByFacility[fac] ?? 0)}</td>
+                      <td className={`${tdR} text-gray-700`}>{fmt(data.inventory.restockByFacility[fac] ?? 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* ── PRODUCTS ───────────────────────────────────── */}
+        <Section title="Products" />
+
+        {/* Top 20 products */}
+        <Label>Top 20 products this month — {isAll ? 'all facilities' : shortName(facility)}</Label>
+        <div className={tableWrap}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={headRow}>
+                <th className={th}>#</th>
+                <th className={th}>Product</th>
+                <th className={thR}>Units sold</th>
+                <th className={thR}>Net revenue (KSh)</th>
+                <th className={thR}>GP margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(facilityTopState === 'loading' || facilityTopState === 'error') && (
+                <tr><td colSpan={5} className="px-4 py-4 text-center text-xs text-gray-400">
+                  {facilityTopState === 'loading' ? 'Loading products…' : 'Couldn’t load products for this facility.'}
+                </td></tr>
+              )}
+              {topProducts.map((p, i) => (
+                <tr key={p.sku || p.product} className={zebra(i)}>
+                  <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2">
+                    <p className="font-medium text-gray-800">{p.product}</p>
+                    <p className="text-[11px] text-gray-400">{p.sku}</p>
+                  </td>
+                  <td className="px-4 py-2 text-right text-gray-700">{fmt(p.qty)}</td>
+                  <td className="px-4 py-2 text-right font-medium text-gray-900">{fmt(p.revenue)}</td>
+                  <td className="px-4 py-2 text-right">
+                    <span className={`text-xs font-medium ${p.margin >= 40 ? 'text-green-700' : p.margin >= 20 ? 'text-amber-700' : 'text-red-600'}`}>
+                      {p.margin}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <p className="mt-10 text-center text-[11px] text-gray-400">
           Generated automatically · AfyaNzima Pharmacy as a Service

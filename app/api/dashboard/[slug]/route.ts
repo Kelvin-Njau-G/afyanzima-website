@@ -4,6 +4,10 @@ import { checkPassword } from '@/lib/facilities';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
 import { userCanViewFacility } from '@/lib/portal/db';
 import { getFacility } from '@/lib/portal/facilities';
+import { CODE_CHECK_CARD, parseCodeCheck } from '@/lib/dashboard/code-check';
+
+// The M-Pesa code check alone takes ~20s on BigQuery; give requests room on Vercel.
+export const maxDuration = 60;
 
 const BASE = process.env.METABASE_URL!.replace(/\/$/, '');
 const MB_USER = process.env.METABASE_USER!;
@@ -292,6 +296,20 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
 
   const facilityName = facility.name;
+
+  // M-Pesa code check (~20s, reads a Google Sheet): fetched by the page on its
+  // own after the rest of the dashboard has loaded.
+  if (body?.codeCheck) {
+    try {
+      const auth = (await mbFetch('/api/session', { username: MB_USER, password: MB_PASS })) as { id: string };
+      const res = (await mbFetch(`/api/card/${CODE_CHECK_CARD}/query`, {}, auth.id)) as MbResult;
+      const codeCheck = parseCodeCheck(res, facilityName);
+      if (codeCheck) return NextResponse.json({ codeCheck });
+    } catch (e) {
+      console.error('[dashboard] code check:', e);
+    }
+    return NextResponse.json({ error: 'Code check unavailable' }, { status: 502 });
+  }
 
   // ── What window are we reporting on? ────────────────────────────────────────
   // The route fetches an arbitrary [from, to] date range. A month is just the
