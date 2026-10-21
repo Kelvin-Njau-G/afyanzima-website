@@ -33,7 +33,7 @@ const ACTIVE_WINDOW_DAYS = 14;
 // SHA-256 of the investor password (the password itself is not in the repo).
 // Set INVESTOR_PASSWORD_HASH in Vercel to change it without a code change.
 const INVESTOR_PASSWORD_HASH =
-  process.env.INVESTOR_PASSWORD_HASH || '905b08d4d2868d8caa8fc20fbd1fea06bc3448dbf64ae2e8ccedbcf4bafebd1d';
+  process.env.INVESTOR_PASSWORD_HASH || 'f0139d60c806818360f635bfda494daf5c66da5ce03e02b259a4d23e315ac748';
 
 /** Therapeutic categories (card 1788 sku_category) grouped for investors. */
 const CATEGORY_GROUPS: Record<string, string[]> = {
