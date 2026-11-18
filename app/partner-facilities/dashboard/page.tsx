@@ -4,11 +4,23 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import CodeCheckSection from '@/components/code-check-section';
 import type { CodeCheckData } from '@/lib/dashboard/code-check';
 
-type DayFigures = { gross: number; discount: number; net: number; profit: number };
+type DayFigures = { gross: number; discount: number; net: number; profit: number; unbilled: number };
 
 type FacilitySummary = {
   gross: number; discountAmt: number; discountPct: number; net: number;
-  grossProfit: number; marginPct: number; avgDaily: number; projected: number; daysTraded: number;
+  grossProfit: number; marginPct: number;
+  unbilledMpesa: number; unbilledMpesaN: number; unbilledCash: number; estSales: number;
+  avgDaily: number; avgDailyBilled: number; daysOpen: number; daysTraded: number;
+  monthEst: number; projected: number; startedOn: string | null; feedTo: string | null;
+};
+
+type MonthFigures = { net: number; profit: number; days: number };
+
+type NetProfitRow = {
+  revenue: number; marginPct: number; logisticsPct: number; grossProfit: number;
+  opex: number; opexBasis: string | null; netProfit: number;
+  dhowSharePct: number; upliftPct: number; dhowProfit: number;
+  noBillRevenue: number; noBillDhowProfit: number;
 };
 
 type TopProduct = { product: string; sku: string; qty: number; revenue: number; margin: number };
@@ -25,7 +37,9 @@ type OverviewData = {
   facilitySummary: Record<string, FacilitySummary>;
   network: {
     totalGross: number; totalNet: number; totalDiscount: number; totalProfit: number;
-    totalProjected: number; totalAvgDaily: number; avgMargin: number; daysInMonth: number;
+    totalUnbilled: number; totalEstSales: number; totalMonthEst: number;
+    totalProjected: number; totalAvgDaily: number; avgMargin: number; daysInMonth: number; monthDaysDone: number;
+    windowDays: number; windowFrom: string; windowTo: string;
     totalInventoryValue: number; totalRestockValue: number;
   };
   comparison: Record<string, {
@@ -33,6 +47,11 @@ type OverviewData = {
     prevAvgDaily: number | null; prevMargin: number | null;
     baselineMonths: string[];
   }>;
+  history: { months: string[]; monthly: Record<string, MonthFigures[]> };
+  /** Null when NET_PROFIT_CONFIG isn't set; a facility's row is null when it has no terms configured. */
+  netProfit: { asOf: string | null; rows: Record<string, NetProfitRow | null> } | null;
+  unbilledAvailable: boolean;
+  emrTo: string | null;
   commercial: {
     topProducts: TopProduct[];
   };
@@ -56,7 +75,7 @@ type OverviewData = {
   unpaidBillsFrom: string;
 };
 
-const PALETTE = ['#533ab7', '#185fa5', '#1d9e75', '#3b6d11', '#ba7517', '#d85a30', '#993556'];
+const PALETTE = ['#533ab7', '#185fa5', '#1d9e75', '#3b6d11', '#ba7517', '#d85a30', '#993556', '#0e7c86', '#7d6b1e'];
 const fmt = (n: number) => Math.round(n).toLocaleString();
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n))}`;
 const ALL = '__all__';
@@ -152,6 +171,8 @@ export default function OverviewDashboard() {
 
   const stackRef = useRef<HTMLCanvasElement>(null);
   const stackChartRef = useRef<unknown>(null);
+  const monthRef = useRef<HTMLCanvasElement>(null);
+  const monthChartRef = useRef<unknown>(null);
   const drillRef = useRef<HTMLDivElement>(null);
 
   // Admins signed into the portal skip the password prompt entirely.
@@ -209,7 +230,8 @@ export default function OverviewDashboard() {
   const colorOf = useMemo(() => {
     const m: Record<string, string> = {};
     data?.allFacilities.forEach((f, i) => { m[f] = PALETTE[i % PALETTE.length]; });
-    return (f: string) => m[f] ?? '#888780';
+    // Facilities that only appear in past months (churned) share a quiet grey.
+    return (f: string) => m[f] ?? '#b4b2a9';
   }, [data]);
 
   // Facilities in scope for every section below.
@@ -258,12 +280,80 @@ export default function OverviewDashboard() {
   useEffect(() => {
     if (!data || !chartReady) return;
     renderChart(data, facs);
+    renderMonthChart(data, facility === ALL
+      ? [...data.allFacilities.filter((f) => data.history.monthly[f]), ...Object.keys(data.history.monthly).filter((f) => !data.allFacilities.includes(f))]
+      : facs.filter((f) => data.history.monthly[f]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, chartReady, facs]);
 
   useEffect(() => () => {
     if (stackChartRef.current) (stackChartRef.current as { destroy(): void }).destroy();
+    if (monthChartRef.current) (monthChartRef.current as { destroy(): void }).destroy();
   }, []);
+
+  /** Completed months: billed net revenue stacked by facility, GP margin of the selection as a line. */
+  function renderMonthChart(d: OverviewData, scope: string[]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Chart = (window as any).Chart;
+    if (!Chart || !monthRef.current) return;
+    if (monthChartRef.current) (monthChartRef.current as { destroy(): void }).destroy();
+    const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const textColor = isDark ? '#b4b2a9' : '#888780';
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const { months, monthly } = d.history;
+    const labels = months.map(monthName);
+    const margin = months.map((_, i) => {
+      const net = scope.reduce((s, f) => s + (monthly[f]?.[i]?.net ?? 0), 0);
+      const profit = scope.reduce((s, f) => s + (monthly[f]?.[i]?.profit ?? 0), 0);
+      return net ? Math.round((profit / net) * 1000) / 10 : null;
+    });
+    monthChartRef.current = new Chart(monthRef.current, {
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'line', label: 'GP margin', data: margin, yAxisID: 'm', order: 0,
+            borderColor: isDark ? '#e8e6dc' : '#2c2c2a', backgroundColor: isDark ? '#e8e6dc' : '#2c2c2a',
+            borderWidth: 1.5, pointRadius: 3, tension: 0,
+          },
+          ...scope.map((fac) => ({
+            type: 'bar', label: fac, data: monthly[fac].map((x) => x.net), yAxisID: 'y', order: 1,
+            backgroundColor: colorOf(fac), stack: 'rev', borderWidth: 0,
+          })),
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items: { dataIndex: number }[]) => {
+                const i = items[0].dataIndex;
+                const net = scope.reduce((s, f) => s + (monthly[f]?.[i]?.net ?? 0), 0);
+                return `${labels[i]} · Net: KSh ${fmt(net)} · GP margin ${margin[i] ?? '—'}%`;
+              },
+              label: (ctx: { dataIndex: number; parsed: { y: number }; dataset: { label: string; type: string } }) => {
+                if (ctx.dataset.type === 'line' || !ctx.parsed.y) return null;
+                const m = monthly[ctx.dataset.label][ctx.dataIndex];
+                return `  ${shortName(ctx.dataset.label)}: KSh ${fmt(m.net)} · ${m.net ? Math.round((m.profit / m.net) * 1000) / 10 : 0}%`;
+              },
+            },
+            padding: 10, boxPadding: 4,
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: textColor } },
+          y: { stacked: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `KSh ${(v / 1e6).toFixed(1)}M` } },
+          m: {
+            position: 'right', min: 0, suggestedMax: 60, grid: { display: false },
+            ticks: { font: { size: 11 }, color: textColor, callback: (v: number) => `${v}%` },
+          },
+        },
+      },
+    });
+  }
 
   function renderChart(d: OverviewData, scope: string[]) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -275,17 +365,31 @@ export default function OverviewDashboard() {
     const textColor = isDark ? '#b4b2a9' : '#888780';
     const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
+    const NO_BILL = 'No bill (estimated)';
+    const noBill = d.dates.map((_, i) => scope.reduce((s, f) => s + (d.daily[f][i]?.unbilled ?? 0), 0));
+    const labels = d.dateLabels.map((l, i) => (d.dates[i] === d.today ? `${l} (so far)` : l));
     stackChartRef.current = new Chart(stackRef.current, {
       type: 'bar',
       data: {
-        labels: d.dateLabels,
-        datasets: scope.map((fac, i) => ({
-          label: fac,
-          data: d.daily[fac].map((x) => x.net),
-          backgroundColor: colorOf(fac),
-          stack: 'rev', borderWidth: 0,
-          borderRadius: i === scope.length - 1 ? { topLeft: 3, topRight: 3 } : 0,
-        })),
+        labels,
+        datasets: [
+          ...scope.map((fac) => ({
+            label: fac,
+            data: d.daily[fac].map((x) => x.net),
+            backgroundColor: colorOf(fac),
+            stack: 'rev', borderWidth: 0,
+          })),
+          ...(d.unbilledAvailable ? [{
+            label: NO_BILL,
+            data: noBill,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+            borderColor: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.30)',
+            borderWidth: { top: 1, left: 0, right: 0, bottom: 0 },
+            borderDash: [3, 3],
+            stack: 'rev',
+            borderRadius: { topLeft: 3, topRight: 3 },
+          }] : []),
+        ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -294,12 +398,14 @@ export default function OverviewDashboard() {
           legend: { display: false },
           tooltip: {
             callbacks: {
-              title: (items: { dataIndex: number; parsed: { y: number } }[]) => {
-                const total = items.reduce((s, i) => s + i.parsed.y, 0);
-                return `${d.dateLabels[items[0].dataIndex]} · Net: KSh ${fmt(total)}`;
+              title: (items: { dataIndex: number; parsed: { y: number }; dataset: { label: string } }[]) => {
+                const billed = items.filter((i) => i.dataset.label !== NO_BILL).reduce((s, i) => s + i.parsed.y, 0);
+                const nb = noBill[items[0].dataIndex];
+                return `${labels[items[0].dataIndex]} · Billed: KSh ${fmt(billed)}${nb ? ` · no bill: KSh ${fmt(nb)}` : ''}`;
               },
               label: (ctx: { dataIndex: number; parsed: { y: number }; dataset: { label: string } }) => {
                 if (!ctx.parsed.y) return null;
+                if (ctx.dataset.label === NO_BILL) return `  ${NO_BILL}: KSh ${fmt(ctx.parsed.y)}`;
                 const day = d.daily[ctx.dataset.label][ctx.dataIndex];
                 const m = day.net ? Math.round((day.profit / day.net) * 1000) / 10 : 0;
                 return `  ${shortName(ctx.dataset.label)}: KSh ${fmt(ctx.parsed.y)} · GP margin ${m}%`;
@@ -359,16 +465,49 @@ export default function OverviewDashboard() {
 
   const { facilitySummary, dates } = data;
   const isAll = facility === ALL;
-  const S = (k: keyof FacilitySummary) => facs.reduce((s, f) => s + facilitySummary[f][k], 0);
+  type NumKey = { [K in keyof FacilitySummary]: FacilitySummary[K] extends number ? K : never }[keyof FacilitySummary];
+  const S = (k: NumKey) => facs.reduce((s, f) => s + facilitySummary[f][k], 0);
   const scopeNet = S('net');
   const scopeProfit = S('grossProfit');
   const scopeGross = S('gross');
   const scopeDiscount = S('discountAmt');
+  const scopeUnbilled = S('unbilledMpesa') + S('unbilledCash');
+  const scopeEst = S('estSales');
   const scopeAvgDaily = S('avgDaily');
   const scopeProjected = S('projected');
+  const scopeMonthEst = S('monthEst');
   const scopeMargin = scopeNet ? Math.round((scopeProfit / scopeNet) * 1000) / 10 : 0;
   const datesDesc = [...dates].reverse();
-  const daysTraded = Math.max(0, ...facs.map((f) => facilitySummary[f].daysTraded));
+  const net = data.network;
+  const windowLabel = `${dayLabel(net.windowFrom)} – ${dayLabel(net.windowTo)}`;
+  const monthShort = data.monthLabel.split(' ')[0];
+  const lateFeeds = facs.filter((f) => facilitySummary[f].feedTo && facilitySummary[f].feedTo! < net.windowTo);
+  const newSites = facs.filter((f) => facilitySummary[f].startedOn);
+  const { months, monthly } = data.history;
+  // Current facilities first, then those no longer in the network; table newest month first.
+  const monthScope = isAll
+    ? [...data.allFacilities.filter((f) => monthly[f]), ...Object.keys(monthly).filter((f) => !data.allFacilities.includes(f))]
+    : facs.filter((f) => monthly[f]);
+  const monthsDesc = months.map((_, i) => i).reverse();
+  const monthTotal = (i: number) => monthScope.reduce(
+    (a, f) => ({ net: a.net + (monthly[f]?.[i]?.net ?? 0), profit: a.profit + (monthly[f]?.[i]?.profit ?? 0) }),
+    { net: 0, profit: 0 },
+  );
+
+  // ── Net profit projection ──
+  const np = data.netProfit;
+  const npFacs = np ? facs.filter((f) => np.rows[f]) : [];
+  const npMissing = np ? facs.filter((f) => !np.rows[f]) : [];
+  const npTotal = npFacs.reduce(
+    (a, f) => {
+      const r = np!.rows[f]!;
+      return {
+        revenue: a.revenue + r.revenue, grossProfit: a.grossProfit + r.grossProfit, opex: a.opex + r.opex,
+        netProfit: a.netProfit + r.netProfit, dhowProfit: a.dhowProfit + r.dhowProfit, noBill: a.noBill + r.noBillDhowProfit,
+      };
+    },
+    { revenue: 0, grossProfit: 0, opex: 0, netProfit: 0, dhowProfit: 0, noBill: 0 },
+  );
 
   const facilityTopState = isAll ? null : facilityTop[facility];
   const topProducts = isAll ? data.commercial.topProducts : Array.isArray(facilityTopState) ? facilityTopState : [];
@@ -442,7 +581,7 @@ export default function OverviewDashboard() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-medium text-gray-900">PaaS Network Overview</h1>
-            <p className="mt-0.5 text-sm text-gray-500">{data.monthLabel} · {isAll ? 'All facilities' : facility}</p>
+            <p className="mt-0.5 text-sm text-gray-500">Last {net.windowDays} days ({windowLabel}) · {isAll ? 'All facilities' : facility}</p>
           </div>
           <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
             Updated {data.generatedAt}
@@ -471,15 +610,25 @@ export default function OverviewDashboard() {
         </div>
 
         {/* ── COMMERCIAL ──────────────────────────────────── */}
-        <Section title="Commercial" sub="All revenue is net of discounts. Gross profit = net revenue − cost of goods sold." />
+        <Section
+          title="Commercial"
+          sub="Pharmacy sales only, net of discounts. Gross profit = billed net revenue − cost of goods sold. Estimated sales = billed + sales with no bill (as in the daily digest)."
+        />
 
-        <Label>{isAll ? 'Network' : shortName(facility)} month-to-date</Label>
+        <Label>{isAll ? 'Network' : shortName(facility)} · last {net.windowDays} days</Label>
         <div className="mb-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {[
-            { label: 'Net revenue', value: fmt(scopeNet), sub: `KSh after ${fmt(scopeDiscount)} discounts (${scopeGross ? Math.round((scopeDiscount / scopeGross) * 1000) / 10 : 0}%)` },
-            { label: 'Gross profit', value: fmt(scopeProfit), sub: `${scopeMargin}% margin on net revenue`, accent: true },
-            { label: 'Avg net revenue / day', value: fmt(scopeAvgDaily), sub: `KSh · ${daysTraded} completed day${daysTraded === 1 ? '' : 's'}` },
-            { label: 'Projected net revenue', value: fmt(scopeProjected), sub: `KSh · avg × ${data.network.daysInMonth} days`, accent: true },
+            { label: 'Billed net revenue', value: fmt(scopeNet), sub: `KSh after ${fmt(scopeDiscount)} discounts (${scopeGross ? Math.round((scopeDiscount / scopeGross) * 1000) / 10 : 0}%)` },
+            { label: 'Gross profit', value: fmt(scopeProfit), sub: `${scopeMargin}% margin on billed net revenue`, accent: true },
+            {
+              label: 'Estimated sales',
+              value: data.unbilledAvailable ? fmt(scopeEst) : '—',
+              sub: data.unbilledAvailable ? `KSh · incl. ${fmt(scopeUnbilled)} with no bill · ${fmt(scopeAvgDaily)}/day` : 'Paybill feed unavailable',
+            },
+            {
+              label: `Projected ${monthShort}`, value: fmt(scopeProjected), accent: true,
+              sub: `KSh · ${fmt(scopeMonthEst)} in ${net.monthDaysDone} day${net.monthDaysDone === 1 ? '' : 's'} + ${net.daysInMonth - net.monthDaysDone} at ${fmt(scopeAvgDaily)}/day`,
+            },
           ].map((card) => (
             <div key={card.label} className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}>
               <p className="mb-1 text-[11px] text-gray-500">{card.label}</p>
@@ -496,24 +645,37 @@ export default function OverviewDashboard() {
             <thead>
               <tr className={headRow}>
                 <th className={th}>Facility</th>
-                <th className={thR}>Net revenue</th>
+                <th className={thR}>Billed net</th>
                 <th className={thR}>Discounts</th>
                 <th className={thR}>Gross profit</th>
                 <th className={thR}>GP margin</th>
-                <th className={thR}>Avg net/day</th>
-                <th className={thR}>Projected</th>
+                <th className={thR}>No bill</th>
+                <th className={thR}>Est. sales</th>
+                <th className={thR}>Per day</th>
+                <th className={thR}>Projected {monthShort}</th>
               </tr>
             </thead>
             <tbody>
               {facs.map((fac, i) => {
                 const s = facilitySummary[fac];
+                const nb = s.unbilledMpesa + s.unbilledCash;
                 return (
                   <tr key={fac} className={zebra(i)}>
-                    <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{fac}</td>
+                    <td className={`${td} font-medium text-gray-800`}>
+                      <Dot color={colorOf(fac)} />{fac}
+                      {s.startedOn && <span className="ml-1.5 text-[11px] font-normal text-gray-400">from {dayLabel(s.startedOn)}</span>}
+                    </td>
                     <td className={`${tdR} font-medium text-gray-900`}>{fmt(s.net)}</td>
                     <td className={`${tdR} text-gray-700`}>{fmt(s.discountAmt)} <span className="text-[11px] text-gray-400">{s.discountPct}%</span></td>
                     <td className={`${tdR} font-medium text-green-700`}>{fmt(s.grossProfit)}</td>
                     <td className={`${tdR} text-gray-700`}>{s.marginPct}%</td>
+                    <td
+                      className={`${tdR} ${nb ? 'text-amber-700' : 'text-gray-300'}`}
+                      title={`M-Pesa with no bill: KSh ${fmt(s.unbilledMpesa)} (${s.unbilledMpesaN} receipts) · cash banked beyond cash billed: KSh ${fmt(s.unbilledCash)}`}
+                    >
+                      {data.unbilledAvailable ? (nb ? fmt(nb) : '—') : '…'}
+                    </td>
+                    <td className={`${tdR} font-medium text-gray-900`}>{fmt(s.estSales)}</td>
                     <td className={`${tdR} text-gray-700`}>{fmt(s.avgDaily)}</td>
                     <td className={`${tdR} font-medium text-gray-800`}>{fmt(s.projected)}</td>
                   </tr>
@@ -526,6 +688,8 @@ export default function OverviewDashboard() {
                   <td className={`${tdR} text-gray-900`}>{fmt(scopeDiscount)}</td>
                   <td className={`${tdR} text-green-700`}>{fmt(scopeProfit)}</td>
                   <td className={`${tdR} text-gray-900`}>{scopeMargin}%</td>
+                  <td className={`${tdR} text-amber-700`}>{fmt(scopeUnbilled)}</td>
+                  <td className={`${tdR} text-gray-900`}>{fmt(scopeEst)}</td>
                   <td className={`${tdR} text-gray-900`}>{fmt(scopeAvgDaily)}</td>
                   <td className={`${tdR} text-gray-900`}>{fmt(scopeProjected)}</td>
                 </tr>
@@ -533,9 +697,104 @@ export default function OverviewDashboard() {
             </tbody>
           </table>
         </div>
+        <p className="-mt-4 mb-6 text-[11px] leading-relaxed text-gray-400">
+          No bill = M-Pesa into the facility&apos;s paybill whose code is on no bill, plus cash banked beyond the cash recorded on bills
+          (hover a cell for the split). Per day = estimated sales ÷ calendar days open, so closed days count as zero. Projected = {monthShort} so
+          far ({net.monthDaysDone} completed day{net.monthDaysDone === 1 ? '' : 's'}) + the remaining days at that rate.
+          {newSites.length > 0 && <> Opened during the window: {newSites.map((f) => `${shortName(f)} (${dayLabel(facilitySummary[f].startedOn!)})`).join(', ')}; averaged over the days since.</>}
+          {lateFeeds.length > 0 && <> Paybill feed not loaded to yesterday for {lateFeeds.map((f) => `${shortName(f)} (to ${dayLabel(facilitySummary[f].feedTo!)})`).join(', ')}, so its no-bill figure is incomplete.</>}
+          {data.emrTo && <> Bills synced to {data.emrTo.replace('T', ' ')}.</>}
+        </p>
+
+        {/* ── NET PROFIT PROJECTION ─────────────────────── */}
+        <Label>Net profit projection — {data.monthLabel}</Label>
+        {!np ? (
+          <p className="mb-6 rounded-lg border border-gray-100 bg-white px-4 py-4 text-center text-xs text-gray-400">
+            Net profit projection isn&apos;t configured (opex and profit-share terms not set on the server).
+          </p>
+        ) : npFacs.length === 0 ? (
+          <p className="mb-6 rounded-lg border border-gray-100 bg-white px-4 py-4 text-center text-xs text-gray-400">
+            No opex or profit-share terms set for {isAll ? 'these facilities' : shortName(facility)}.
+          </p>
+        ) : (
+          <>
+            <div className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {[
+                { label: 'Projected billed revenue', value: fmt(npTotal.revenue), sub: `KSh · ${monthShort}, as in the statements` },
+                { label: 'Pharmacy net profit', value: fmt(npTotal.netProfit), sub: `KSh after ${fmt(npTotal.opex)} opex` },
+                { label: 'Dhow profit', value: fmt(npTotal.dhowProfit), sub: `KSh · our share under the agreements`, accent: true },
+                { label: 'Upside from no-bill sales', value: data.unbilledAvailable ? `+${fmt(npTotal.noBill)}` : '—', sub: 'KSh Dhow profit, not in the statements' },
+              ].map((card) => (
+                <div key={card.label} className={`rounded-lg bg-gray-100 p-3.5 ${card.accent ? 'border-l-[3px] border-green-600' : ''}`}>
+                  <p className="mb-1 text-[11px] text-gray-500">{card.label}</p>
+                  <p className={`text-xl font-medium ${card.accent ? 'text-green-700' : 'text-gray-900'}`}>{card.value}</p>
+                  <p className="mt-0.5 text-[11px] text-gray-400">{card.sub}</p>
+                </div>
+              ))}
+            </div>
+            <div className={tableWrap}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={headRow}>
+                    <th className={th}>Facility</th>
+                    <th className={thR}>Revenue</th>
+                    <th className={thR}>GP margin</th>
+                    <th className={thR}>Gross profit</th>
+                    <th className={thR}>Opex</th>
+                    <th className={thR}>Net profit</th>
+                    <th className={thR}>Dhow share</th>
+                    <th className={thR}>Dhow profit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {npFacs.map((fac, i) => {
+                    const r = np.rows[fac]!;
+                    return (
+                      <tr key={fac} className={zebra(i)}>
+                        <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{shortName(fac)}</td>
+                        <td className={`${tdR} text-gray-900`}>{fmt(r.revenue)}</td>
+                        <td className={`${tdR} text-gray-700`} title={`30-day GP margin less ${r.logisticsPct}% logistics`}>{r.marginPct}%</td>
+                        <td className={`${tdR} text-gray-700`}>{fmt(r.grossProfit)}</td>
+                        <td className={`${tdR} text-gray-700`} title={r.opexBasis ?? undefined}>{fmt(r.opex)}</td>
+                        <td className={`${tdR} font-medium ${r.netProfit < 0 ? 'text-red-600' : 'text-gray-900'}`}>{fmt(r.netProfit)}</td>
+                        <td
+                          className={`${tdR} text-gray-700`}
+                          title={r.upliftPct > 0 ? `Includes +${r.upliftPct} points while the profit-share advance is repaid` : undefined}
+                        >
+                          {r.dhowSharePct}%{r.upliftPct > 0 && <span className="ml-1 text-[11px] text-gray-400">(+{r.upliftPct})</span>}
+                        </td>
+                        <td className={`${tdR} font-medium ${r.dhowProfit < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(r.dhowProfit)}</td>
+                      </tr>
+                    );
+                  })}
+                  {npFacs.length > 1 && (
+                    <tr className="border-t-2 border-gray-200 bg-gray-50 font-medium">
+                      <td className={`${td} text-gray-900`}>Total</td>
+                      <td className={`${tdR} text-gray-900`}>{fmt(npTotal.revenue)}</td>
+                      <td className={`${tdR} text-gray-900`}>{npTotal.revenue ? Math.round((npTotal.grossProfit / npTotal.revenue) * 1000) / 10 : 0}%</td>
+                      <td className={`${tdR} text-gray-900`}>{fmt(npTotal.grossProfit)}</td>
+                      <td className={`${tdR} text-gray-900`}>{fmt(npTotal.opex)}</td>
+                      <td className={`${tdR} text-gray-900`}>{fmt(npTotal.netProfit)}</td>
+                      <td className={`${tdR} text-gray-900`}>{npTotal.netProfit ? Math.round((npTotal.dhowProfit / npTotal.netProfit) * 1000) / 10 : 0}%</td>
+                      <td className={`${tdR} text-green-700`}>{fmt(npTotal.dhowProfit)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="-mt-4 mb-6 text-[11px] leading-relaxed text-gray-400">
+              Revenue = billed sales in {monthShort} so far + the remaining {net.daysInMonth - net.monthDaysDone} days at the last {net.windowDays} days&apos; billed
+              rate (the monthly statements use billed sales). GP margin = the last {net.windowDays} days&apos; margin less logistics, which the statements
+              book into cost of sales. Opex = average of recent full months{np.asOf ? ` (to ${monthName(np.asOf)})` : ''}, or the agreement&apos;s baseline
+              for sites without one; hover for the basis. Dhow share = the agreement&apos;s tier for that revenue, plus the agreed extra while a profit-share
+              advance is repaid; a loss is Dhow&apos;s in full. Upside = no-bill sales over the month at the same margin and share.
+              {npMissing.length > 0 && <> No terms set for {npMissing.map(shortName).join(', ')}, so left out.</>}
+            </p>
+          </>
+        )}
 
         {/* Stacked chart */}
-        <Label>Daily net revenue {isAll ? 'by facility' : `— ${shortName(facility)}`}</Label>
+        <Label>Daily billed net revenue {isAll ? 'by facility' : `— ${shortName(facility)}`}{data.unbilledAvailable ? ', plus sales with no bill' : ''}</Label>
         {isAll && (
           <div className="mb-3 flex flex-wrap gap-3">
             {facs.map((fac) => (
@@ -549,27 +808,92 @@ export default function OverviewDashboard() {
         )}
         <div className="rounded-xl border border-gray-100 bg-white p-5">
           <div className="relative h-80 w-full">
-            <canvas ref={stackRef} role="img" aria-label="Stacked bar chart of daily net revenue per facility this month." />
+            <canvas ref={stackRef} role="img" aria-label="Stacked bar chart of daily billed net revenue per facility over the last 30 days, with sales that have no bill on top." />
           </div>
-          <p className="mt-2 text-[11px] text-gray-400">Hover any bar to see net revenue and gross margin per facility</p>
+          <p className="mt-2 text-[11px] text-gray-400">
+            Hover any bar to see net revenue and gross margin per facility.{data.unbilledAvailable ? ' The grey top segment is sales with no bill.' : ''} The last bar is today so far.
+          </p>
         </div>
 
-        {/* This month vs previous months */}
-        <Label>This month vs average of last 3 full months</Label>
+        {/* Completed months */}
+        <Label>Completed months — billed net revenue and GP margin</Label>
+        {months.length === 0 ? (
+          <Unavailable what="monthly history" />
+        ) : monthScope.length === 0 ? (
+          <p className="mb-6 rounded-lg border border-gray-100 bg-white px-4 py-4 text-center text-xs text-gray-400">
+            No completed month yet for {shortName(facility)}.
+          </p>
+        ) : (
+          <>
+            <div className="mb-3 rounded-xl border border-gray-100 bg-white p-5">
+              <div className="relative h-72 w-full">
+                <canvas ref={monthRef} role="img" aria-label="Billed net revenue per completed month by facility, with GP margin as a line." />
+              </div>
+              <p className="mt-2 text-[11px] text-gray-400">
+                Bars = billed net revenue by facility (left axis); line = GP margin of {isAll ? 'all facilities' : shortName(facility)} (right axis).
+                Grey bars are facilities no longer in the network.
+              </p>
+            </div>
+            <div className={tableWrap}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={headRow}>
+                    <th className={th}>Facility</th>
+                    {monthsDesc.map((j) => <th key={months[j]} className={thR}>{monthName(months[j])}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthScope.filter((f) => monthly[f]).map((fac, i) => (
+                    <tr key={fac} className={zebra(i)}>
+                      <td className={`${td} font-medium text-gray-800`}><Dot color={colorOf(fac)} />{shortName(fac)}</td>
+                      {monthsDesc.map((j) => monthly[fac][j]).map((m, k) => (
+                        <td key={months[monthsDesc[k]]} className={tdR}>
+                          {m.net ? (
+                            <>
+                              <span className="text-gray-800">{fmt(m.net / 1000)}k</span>
+                              <span className="ml-1.5 text-[11px] text-gray-400">{Math.round((m.profit / m.net) * 1000) / 10}%</span>
+                            </>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {monthScope.length > 1 && (
+                    <tr className="border-t-2 border-gray-200 bg-gray-50 font-medium">
+                      <td className={`${td} text-gray-900`}>Total</td>
+                      {monthsDesc.map((j) => {
+                        const t = monthTotal(j);
+                        return (
+                          <td key={months[j]} className={tdR}>
+                            <span className="text-gray-900">{fmt(t.net / 1000)}k</span>
+                            <span className="ml-1.5 text-[11px] font-normal text-gray-400">{t.net ? Math.round((t.profit / t.net) * 1000) / 10 : 0}%</span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* Last 30 days vs previous months */}
+        <Label>Last {net.windowDays} days vs average of last 3 full months</Label>
         <div className={tableWrap}>
           <table className="w-full text-sm">
             <thead>
               <tr className={headRow}>
                 <th className={th} rowSpan={2}>Facility</th>
-                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>Avg net revenue / day (KSh)</th>
+                <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>Billed net revenue / calendar day (KSh)</th>
                 <th className="border-l border-gray-100 px-4 pt-3 text-center" colSpan={3}>GP margin</th>
                 <th className={`${thR} border-l border-gray-100`} rowSpan={2}>Baseline</th>
               </tr>
               <tr className={headRow}>
-                <th className={`${thR} border-l border-gray-100`}>This month</th>
+                <th className={`${thR} border-l border-gray-100`}>Last {net.windowDays} d</th>
                 <th className={thR}>3-mo avg</th>
                 <th className={thR}>Change</th>
-                <th className={`${thR} border-l border-gray-100`}>This month</th>
+                <th className={`${thR} border-l border-gray-100`}>Last {net.windowDays} d</th>
                 <th className={thR}>3-mo avg</th>
                 <th className={thR}>Change</th>
               </tr>
@@ -663,7 +987,7 @@ export default function OverviewDashboard() {
         <CodeCheckSection state={codeCheck} onRetry={loadCodeCheck} scope={facs} shortName={shortName} />
 
         {/* ── DISCOUNTS ──────────────────────────────────── */}
-        <Section title="Discounts" sub="Daily discounts per facility. Click any amount to see which staff gave it." />
+        <Section title="Discounts" sub="Daily discounts per facility, last 30 days. Click any amount to see which staff gave it." />
         <div className={tableWrap}>
           <table className="w-full text-sm">
             <thead>
@@ -675,7 +999,7 @@ export default function OverviewDashboard() {
             </thead>
             <tbody>
               <tr className="border-b-2 border-gray-200 bg-gray-50 font-medium">
-                <td className={`${td} text-gray-900`}>This month</td>
+                <td className={`${td} text-gray-900`}>Last {net.windowDays} days</td>
                 {facs.map((f) => (
                   <td key={f} className={tdR}>
                     <button onClick={() => openDrill(f, '')} className="text-gray-900 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-700">
@@ -727,7 +1051,7 @@ export default function OverviewDashboard() {
               onChange={(e) => setDrillDate(e.target.value)}
               className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
             >
-              <option value="">Whole month</option>
+              <option value="">Last {net.windowDays} days</option>
               {datesDesc.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
             </select>
           </div>
@@ -746,7 +1070,7 @@ export default function OverviewDashboard() {
                   </thead>
                   <tbody>
                     {drillRows.filter((r) => drillDate || r.discount).length === 0 && (
-                      <tr><td colSpan={5} className="px-4 py-4 text-center text-xs text-gray-400">No discounts {drillDate ? `on ${dayLabel(drillDate)}` : 'this month'}.</td></tr>
+                      <tr><td colSpan={5} className="px-4 py-4 text-center text-xs text-gray-400">No discounts {drillDate ? `on ${dayLabel(drillDate)}` : `in the last ${net.windowDays} days`}.</td></tr>
                     )}
                     {drillRows.filter((r) => drillDate || r.discount).map((r, i) => (
                       <tr key={r.staff} className={zebra(i)}>
@@ -808,7 +1132,7 @@ export default function OverviewDashboard() {
               </thead>
               <tbody>
                 <tr className="border-b-2 border-gray-200 bg-gray-50 font-medium">
-                  <td className={`${td} text-gray-900`}>This month</td>
+                  <td className={`${td} text-gray-900`}>Last {net.windowDays} days</td>
                   {facs.map((f) => <td key={f} className={tdR}><MissedCell m={missedMonth(f)} /></td>)}
                   {facs.length > 1 && (
                     <td className={tdR}>
@@ -817,7 +1141,7 @@ export default function OverviewDashboard() {
                   )}
                 </tr>
                 {missedDates.length === 0 && (
-                  <tr><td colSpan={facs.length + 2} className="px-4 py-4 text-center text-xs text-gray-400">No missed sales logged this month.</td></tr>
+                  <tr><td colSpan={facs.length + 2} className="px-4 py-4 text-center text-xs text-gray-400">No missed sales logged in the last {net.windowDays} days.</td></tr>
                 )}
                 {missedDates.map((d, i) => {
                   const row = facs.map((f) => missedAt(f, d));
@@ -902,9 +1226,9 @@ export default function OverviewDashboard() {
             <p className="mt-0.5 text-[11px] text-gray-400">KSh · current stock at buying price</p>
           </div>
           <div className="rounded-lg border-l-[3px] border-green-600 bg-gray-100 p-3.5">
-            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total monthly restock value' : 'Monthly restock value'}</p>
+            <p className="mb-1 text-[11px] text-gray-500">{isAll ? 'Total restock value' : 'Restock value'}</p>
             <p className="text-xl font-medium text-green-700">{fmt(facs.reduce((s, f) => s + (data.inventory.restockByFacility[f] ?? 0), 0))}</p>
-            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received this month</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">KSh · stock received in the last {net.windowDays} days</p>
           </div>
         </div>
 
@@ -917,7 +1241,7 @@ export default function OverviewDashboard() {
                   <tr className={headRow}>
                     <th className={th}>Facility</th>
                     <th className={thR}>Inventory value (KSh)</th>
-                    <th className={thR}>Monthly restock (KSh)</th>
+                    <th className={thR}>Restock, last {net.windowDays} days (KSh)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -938,7 +1262,7 @@ export default function OverviewDashboard() {
         <Section title="Products" />
 
         {/* Top 20 products */}
-        <Label>Top 20 products this month — {isAll ? 'all facilities' : shortName(facility)}</Label>
+        <Label>Top 20 products, last {net.windowDays} days — {isAll ? 'all facilities' : shortName(facility)}</Label>
         <div className={tableWrap}>
           <table className="w-full text-sm">
             <thead>

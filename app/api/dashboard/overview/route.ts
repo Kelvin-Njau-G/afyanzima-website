@@ -4,6 +4,8 @@ import { checkDashboardPassword } from '@/lib/facilities';
 import { readSessionToken, SESSION_COOKIE } from '@/lib/portal/session';
 import { portalDb } from '@/lib/portal/db';
 import { CODE_CHECK_CARD, parseCodeCheck } from '@/lib/dashboard/code-check';
+import { unbilledQuery, parseUnbilled } from '@/lib/dashboard/unbilled';
+import { readNetProfitConfig, projectNetProfit, type NetProfitRow } from '@/lib/dashboard/net-profit';
 
 // A dozen-odd Metabase queries run per load; give them room on Vercel.
 export const maxDuration = 60;
@@ -98,8 +100,8 @@ const F = {
   time: (unit: string) => ['field', 'Cart_Time', { 'base-type': 'type/DateTimeWithLocalTZ', 'temporal-unit': unit }],
 };
 
-function ordersQuery(q: { from?: string; to?: string; org?: string; extra?: unknown[]; aggregation: unknown[]; breakout?: unknown[]; orderBy?: unknown[]; limit?: number }) {
-  const filter: unknown[] = ['and', ['=', F.dept, 'Pharmacy']];
+function ordersQuery(q: { from?: string; to?: string; org?: string; allDepts?: boolean; extra?: unknown[]; aggregation: unknown[]; breakout?: unknown[]; orderBy?: unknown[]; limit?: number }) {
+  const filter: unknown[] = q.allDepts ? ['and', ['not-null', F.org]] : ['and', ['=', F.dept, 'Pharmacy']];
   if (q.from) filter.push(['>=', F.time('minute'), `${q.from}T00:00:00`]);
   if (q.to)   filter.push(['<',  F.time('minute'), `${q.to}T00:00:00`]);
   if (q.org)  filter.push(['=', F.org, q.org]);
@@ -200,13 +202,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not authorised' }, { status: 401 });
   }
 
+  // The page shows a rolling window: the last WINDOW_DAYS completed days plus
+  // today so far, so it is never empty on the 1st. The current calendar month is
+  // still fetched in full for its month-end projection.
+  const WINDOW_DAYS = 30;
   const todayStr    = nairobiDate();
   const monthPrefix = todayStr.slice(0, 7);
   const monthStart  = `${monthPrefix}-01`;
   const [yy, mm]    = monthPrefix.split('-').map(Number);
   const daysInMonth = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
-  const monthEnd    = addDays(monthStart, daysInMonth); // exclusive
   const monthLabel  = new Date(Date.UTC(yy, mm - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const windowFrom  = addDays(todayStr, -WINDOW_DAYS);              // first of the 30 completed days
+  const windowEnd   = addDays(todayStr, 1);                         // exclusive: includes today so far
+  const fetchFrom   = monthStart < windowFrom ? monthStart : windowFrom;
   const billsFrom   = addDays(todayStr, -3);
 
   const auth = (await mbFetch('/api/session', { username: MB_USER, password: MB_PASS })) as { id: string };
@@ -227,49 +235,74 @@ export async function POST(req: NextRequest) {
   // A single facility's top products are fetched on demand, when the facility
   // filter is used — running all of them up front doubled the page load time.
   if (typeof body?.topProductsFor === 'string') {
-    const res = await dataset(topProducts(monthStart, monthEnd, body.topProductsFor));
+    const res = await dataset(topProducts(windowFrom, todayStr, body.topProductsFor));
     return NextResponse.json({ topProducts: parseTopProducts(res) });
   }
 
+  // Stock received per facility over the window (card 1782 = stock movements;
+  // card 1661 is the same thing broken out per product and month).
+  const restockQuery = {
+    database: 5,
+    type: 'query',
+    query: {
+      'source-table': 'card__1782',
+      filter: ['and',
+        ['=', ['field', 'stock_movement_type', { 'base-type': 'type/Text' }], 'Restock'],
+        ['>=', ['field', 'stock_movement_date', { 'base-type': 'type/Date' }], windowFrom],
+        ['<',  ['field', 'stock_movement_date', { 'base-type': 'type/Date' }], todayStr],
+      ],
+      aggregation: [['sum', ['field', 'movement_value', { 'base-type': 'type/Decimal' }]]],
+      breakout: [['field', 'organization_name', { 'base-type': 'type/Text' }]],
+    },
+  };
+
   // Everything runs in parallel; card 1788 queries take ~10s each on BigQuery.
-  const [dailyRes, networkTopRes, invByClassRes, restockRes, reconRes, staffDailyRes, staffMonthRes, missedRes, unpaidRes, historyRes] =
+  const [dailyRes, networkTopRes, invByClassRes, restockRes, reconRes, staffDailyRes, staffMonthRes, missedRes, unpaidRes, historyRes, deptRes, unbilledRes] =
     await Promise.all([
       dataset(ordersQuery({
-        from: monthStart, to: monthEnd,
+        from: fetchFrom, to: windowEnd,
         aggregation: [['sum', F.amount], ['sum', F.discount], ['sum', F.net], ['sum', F.profit]],
         breakout: [F.time('day'), F.org],
       })),
-      dataset(topProducts(monthStart, monthEnd)),
+      dataset(topProducts(windowFrom, todayStr)),
       card(2507),                                   // inventory value by class
-      card(1661),                                   // monthly restock value
+      safe('restock', dataset(restockQuery)),
       safe('reconciliation', card(3431)),           // revenue vs collections, month to date
       safe('staff discounts (daily)', dataset(ordersQuery({
-        from: monthStart, to: monthEnd,
+        from: windowFrom, to: windowEnd,
         extra: [['!=', F.discount, 0]],
         aggregation: [['sum', F.discount], ['sum', F.amount], ['distinct', F.order]],
         breakout: [F.time('day'), F.org, F.staff],
-        limit: 5000,
+        limit: 10000,
       }))),
-      safe('staff discounts (month)', dataset(ordersQuery({
-        from: monthStart, to: monthEnd,
+      safe('staff discounts (window)', dataset(ordersQuery({
+        from: windowFrom, to: todayStr,
         aggregation: [['sum', F.amount], ['sum', F.discount], ['distinct', F.order]],
         breakout: [F.org, F.staff],
       }))),
-      safe('missed sales', dataset(missedSalesQuery(monthStart, monthEnd))),
+      safe('missed sales', dataset(missedSalesQuery(windowFrom, windowEnd))),
       safe('unpaid bills', card(2824)),
-      // Every previous month, per facility: net revenue, gross profit and the
+      // Every completed month, per facility: net revenue, gross profit and the
       // number of days that had sales.
       safe('history', dataset(ordersQuery({
         to: monthStart,
-        aggregation: [['sum', F.net], ['sum', F.profit], ['distinct', F.time('day')]],
+        aggregation: [['sum', F.net], ['sum', F.profit], ['distinct', F.time('day')], ['min', F.time('day')]],
         breakout: [F.time('month'), F.org],
         limit: 10000,
       }))),
+      // Pharmacy share of everything billed, for scaling sales with no bill at
+      // sites that also bill clinic services (Well Living).
+      safe('departments', dataset(ordersQuery({
+        from: windowFrom, to: todayStr, allDepts: true,
+        aggregation: [['sum', F.net]],
+        breakout: [F.org, F.dept],
+      }))),
+      safe('sales with no bill', dataset(unbilledQuery(fetchFrom))),
     ]);
 
-  // Daily revenue per facility
-  type DayFigures = { gross: number; discount: number; net: number; profit: number };
-  const byDate: Record<string, Record<string, DayFigures>> = {};
+  // Daily revenue per facility (billed pharmacy sales, card 1788)
+  type DayFigures = { gross: number; discount: number; net: number; profit: number; unbilled: number };
+  const byDate: Record<string, Record<string, Omit<DayFigures, 'unbilled'>>> = {};
   const activeFacilities = new Set<string>();
   for (const row of dailyRes.data.rows) {
     const d = String(row[0]).slice(0, 10);
@@ -277,53 +310,134 @@ export async function POST(req: NextRequest) {
     if (!fac) continue;
     byDate[d] ??= {};
     byDate[d][fac] = { gross: num(row[2]), discount: num(row[3]), net: num(row[4]), profit: num(row[5]) };
-    activeFacilities.add(fac);
+    if (d >= windowFrom) activeFacilities.add(fac);
   }
-  const dates = Object.keys(byDate).sort();
   const allFacilities = Array.from(activeFacilities).sort();
+  // Every calendar day from fetchFrom to today, so days with no sales show as zero.
+  const allDays: string[] = [];
+  for (let d = fetchFrom; d <= todayStr; d = addDays(d, 1)) allDays.push(d);
+  const dates = allDays.filter((d) => d >= windowFrom);               // shown: 30 days + today
+  const completed = dates.filter((d) => d < todayStr);                 // the 30 completed days
   const dateLabels = dates.map((d) =>
     new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
   );
 
-  // ── Per-facility summary (all NET) ────────────────────────────────────────
+  // Completed months per facility (also tells us when each facility started).
+  const historyByFacility: Record<string, Array<[string, { net: number; profit: number; days: number; first: string }]>> = {};
+  for (const row of historyRes?.data?.rows ?? []) {
+    const fac = row[1] as string;
+    if (!fac) continue;
+    (historyByFacility[fac] ??= []).push([
+      String(row[0]).slice(0, 7),
+      { net: num(row[2]), profit: num(row[3]), days: num(row[4]), first: String(row[5] ?? '').slice(0, 10) },
+    ]);
+  }
+  for (const h of Object.values(historyByFacility)) h.sort(([a], [b]) => a.localeCompare(b));
+
+  // Sales with no bill (paybill receipts whose code is on no bill + cash banked beyond
+  // cash billed), scaled to the pharmacy's share of billing at mixed clinic sites.
+  const unbilled = parseUnbilled(unbilledRes);
+  const pharmShare: Record<string, number> = {};
+  {
+    const tot: Record<string, { ph: number; all: number }> = {};
+    for (const row of deptRes?.data?.rows ?? []) {
+      const fac = row[0] as string;
+      if (!fac) continue;
+      const t = (tot[fac] ??= { ph: 0, all: 0 });
+      t.all += num(row[2]);
+      if (row[1] === 'Pharmacy') t.ph += num(row[2]);
+    }
+    for (const [fac, t] of Object.entries(tot)) pharmShare[fac] = t.all > 0 ? Math.min(1, t.ph / t.all) : 1;
+  }
+  const unbilledOn = (fac: string, d: string) => {
+    const u = unbilled?.byFacility[fac]?.days[d];
+    return u ? { mpesa: u.mpesa * (pharmShare[fac] ?? 1), cash: u.cash * (pharmShare[fac] ?? 1), n: u.mpesaN } : { mpesa: 0, cash: 0, n: 0 };
+  };
+
+  // ── Per-facility summary over the 30 completed days (all NET) ─────────────
+  // Daily averages count every calendar day since the facility opened (closed
+  // days are zero, not skipped), and use estimated sales = billed + no bill.
+  // Projection for the calendar month = month so far (estimated) + the remaining
+  // days at that daily average.
   type Summary = {
     gross: number; discountAmt: number; discountPct: number; net: number;
-    grossProfit: number; marginPct: number; avgDaily: number; projected: number; daysTraded: number;
+    grossProfit: number; marginPct: number;
+    unbilledMpesa: number; unbilledMpesaN: number; unbilledCash: number; estSales: number;
+    avgDaily: number; avgDailyBilled: number; daysOpen: number; daysTraded: number;
+    monthEst: number; projected: number; startedOn: string | null; feedTo: string | null;
   };
   const facilitySummary: Record<string, Summary> = {};
   const daily: Record<string, DayFigures[]> = {};
+  // Unrounded inputs for the net profit projection.
+  const npInputs: Record<string, { monthBilled: number; billedPerDay: number; margin: number; monthNoBill: number; noBillPerDay: number }> = {};
+  const monthDaysDone = allDays.filter((d) => d >= monthStart && d < todayStr).length;
 
   for (const fac of allFacilities) {
+    const day = (d: string) => byDate[d]?.[fac];
     daily[fac] = dates.map((d) => {
-      const f = byDate[d]?.[fac];
-      return f
-        ? { gross: round(f.gross), discount: round(f.discount), net: round(f.net), profit: round(f.profit) }
-        : { gross: 0, discount: 0, net: 0, profit: 0 };
+      const f = day(d);
+      const u = unbilledOn(fac, d);
+      return {
+        gross: round(f?.gross ?? 0), discount: round(f?.discount ?? 0), net: round(f?.net ?? 0), profit: round(f?.profit ?? 0),
+        unbilled: round(u.mpesa + u.cash),
+      };
     });
-    const tot = daily[fac].reduce(
-      (a, f) => ({ gross: a.gross + f.gross, discount: a.discount + f.discount, net: a.net + f.net, profit: a.profit + f.profit }),
-      { gross: 0, discount: 0, net: 0, profit: 0 },
+    // A facility with no completed month yet opened in this window: its first day of
+    // takings is the first day with a bill or a receipt with no bill (Palms' first
+    // day's sales were billed the next morning).
+    const firstTaking = allDays.find((d) => (day(d)?.net ?? 0) > 0 || unbilledOn(fac, d).mpesa + unbilledOn(fac, d).cash > 0);
+    const firstEver = historyByFacility[fac]?.[0]?.[1].first || firstTaking || windowFrom;
+    const startedOn = firstEver > windowFrom ? firstEver : null;
+    const openDays = completed.filter((d) => d >= firstEver);
+    const tot = completed.reduce(
+      (a, d) => {
+        const f = day(d);
+        const u = unbilledOn(fac, d);
+        return {
+          gross: a.gross + (f?.gross ?? 0), discount: a.discount + (f?.discount ?? 0), net: a.net + (f?.net ?? 0), profit: a.profit + (f?.profit ?? 0),
+          um: a.um + u.mpesa, un: a.un + u.n, uc: a.uc + u.cash, traded: a.traded + ((f?.net ?? 0) > 0 ? 1 : 0),
+        };
+      },
+      { gross: 0, discount: 0, net: 0, profit: 0, um: 0, un: 0, uc: 0, traded: 0 },
     );
-    // Average over completed trading days — today is still in progress.
-    const complete = dates
-      .map((d, i) => ({ d, net: daily[fac][i].net }))
-      .filter((x) => x.d < todayStr && x.net > 0);
-    const avgDaily = complete.length ? round(complete.reduce((a, x) => a + x.net, 0) / complete.length) : 0;
+    const estSales = tot.net + tot.um + tot.uc;
+    const avgDaily = openDays.length ? estSales / openDays.length : 0;
+    const monthDays = allDays.filter((d) => d >= monthStart && d < todayStr);
+    const monthBilled = monthDays.reduce((s, d) => s + (day(d)?.net ?? 0), 0);
+    const monthNoBill = monthDays.reduce((s, d) => { const u = unbilledOn(fac, d); return s + u.mpesa + u.cash; }, 0);
+    const monthEst = monthBilled + monthNoBill;
+    npInputs[fac] = {
+      monthBilled,
+      billedPerDay: openDays.length ? tot.net / openDays.length : 0,
+      margin: tot.net ? tot.profit / tot.net : 0,
+      monthNoBill,
+      noBillPerDay: openDays.length ? (tot.um + tot.uc) / openDays.length : 0,
+    };
 
     facilitySummary[fac] = {
-      gross: tot.gross,
-      discountAmt: tot.discount,
+      gross: round(tot.gross),
+      discountAmt: round(tot.discount),
       discountPct: pct1(tot.discount, tot.gross),
-      net: tot.net,
-      grossProfit: tot.profit,
+      net: round(tot.net),
+      grossProfit: round(tot.profit),
       marginPct: pct1(tot.profit, tot.net),
-      avgDaily,
-      projected: avgDaily * daysInMonth,
-      daysTraded: complete.length,
+      unbilledMpesa: round(tot.um),
+      unbilledMpesaN: tot.un,
+      unbilledCash: round(tot.uc),
+      estSales: round(estSales),
+      avgDaily: round(avgDaily),
+      avgDailyBilled: openDays.length ? round(tot.net / openDays.length) : 0,
+      daysOpen: openDays.length,
+      daysTraded: tot.traded,
+      monthEst: round(monthEst),
+      projected: round(monthEst + (daysInMonth - monthDaysDone) * avgDaily),
+      startedOn,
+      feedTo: unbilled?.byFacility[fac]?.feedTo ?? null,
     };
   }
 
-  const sum = (k: keyof Summary) => allFacilities.reduce((s, f) => s + facilitySummary[f][k], 0);
+  const sum = (k: 'gross' | 'discountAmt' | 'net' | 'grossProfit' | 'unbilledMpesa' | 'unbilledCash' | 'estSales' | 'avgDaily' | 'monthEst' | 'projected') =>
+    allFacilities.reduce((s, f) => s + facilitySummary[f][k], 0);
   const totalNet = sum('net');
   const totalProfit = sum('grossProfit');
   const network = {
@@ -331,45 +445,61 @@ export async function POST(req: NextRequest) {
     totalNet,
     totalDiscount: sum('discountAmt'),
     totalProfit,
+    totalUnbilled: sum('unbilledMpesa') + sum('unbilledCash'),
+    totalEstSales: sum('estSales'),
     totalProjected: sum('projected'),
+    totalMonthEst: sum('monthEst'),
     totalAvgDaily: sum('avgDaily'),
     avgMargin: pct1(totalProfit, totalNet),
     daysInMonth,
+    monthDaysDone,
+    windowDays: WINDOW_DAYS,
+    windowFrom,
+    windowTo: addDays(todayStr, -1),
     totalInventoryValue: 0,
     totalRestockValue: 0,
   };
 
-  // ── This month vs the last 3 full months ──────────────────────────────────
-  // Each baseline month contributes its own average net revenue per trading day
-  // and its own GP margin (net revenue − COGS) / net revenue; the baseline is
-  // the plain mean of those months. Months with fewer than BASELINE_MIN_DAYS
-  // trading days are skipped: a facility's onboarding month is usually partial
-  // and its prices are still being set up (Healmerc's June 2026 shows net
-  // revenue above list price and a 56% margin), which skewed an all-history
-  // average far away from how the facility normally runs.
+  // ── Net profit projection for the calendar month ──────────────────────────
+  // Billed sales basis (as in the monthly statements); opex and profit-share terms
+  // come from NET_PROFIT_CONFIG (see lib/dashboard/net-profit.ts). Null when unset.
+  const npConfig = readNetProfitConfig();
+  const netProfit = npConfig
+    ? {
+        asOf: npConfig.asOf ?? null,
+        rows: Object.fromEntries(
+          allFacilities.map((fac): [string, NetProfitRow | null] => {
+            const terms = npConfig.facilities[fac];
+            return [fac, terms ? projectNetProfit(terms, { ...npInputs[fac], daysLeft: daysInMonth - monthDaysDone }) : null];
+          }),
+        ),
+      }
+    : null;
+
+  // ── Last 30 days vs the last 3 full months ────────────────────────────────
+  // Billed net revenue per calendar day (closed days count as zero, as above)
+  // and GP margin. Baseline = plain mean of the last 3 completed months with at
+  // least BASELINE_MIN_DAYS trading days, never a facility's first month: an
+  // onboarding month is partial and its prices are still being set up
+  // (Healmerc's June 2026 showed net revenue above list and a 56% margin).
   const BASELINE_MONTHS = 3;
   const BASELINE_MIN_DAYS = 20;
+  const daysIn = (m: string) => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo, 0)).getUTCDate(); };
   const comparison: Record<string, {
     thisAvgDaily: number; thisMargin: number;
     prevAvgDaily: number | null; prevMargin: number | null;
     baselineMonths: string[];
   }> = {};
-  const historyByFacility: Record<string, Array<[string, { net: number; profit: number; days: number }]>> = {};
-  for (const row of historyRes?.data?.rows ?? []) {
-    const fac = row[1] as string;
-    if (!fac) continue;
-    (historyByFacility[fac] ??= []).push([String(row[0]).slice(0, 7), { net: num(row[2]), profit: num(row[3]), days: num(row[4]) }]);
-  }
   allFacilities.forEach((fac) => {
     const valid = (historyByFacility[fac] ?? [])
+      .slice(1)
       .filter(([, v]) => v.days >= BASELINE_MIN_DAYS && v.net > 0)
-      .sort(([a], [b]) => a.localeCompare(b))
       .slice(-BASELINE_MONTHS);
     const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-    const prevAvg = mean(valid.map(([, v]) => v.net / v.days));
+    const prevAvg = mean(valid.map(([m, v]) => v.net / daysIn(m)));
     const prevMargin = mean(valid.map(([, v]) => (v.profit / v.net) * 100));
     comparison[fac] = {
-      thisAvgDaily: facilitySummary[fac].avgDaily,
+      thisAvgDaily: facilitySummary[fac].avgDailyBilled,
       thisMargin: facilitySummary[fac].marginPct,
       prevAvgDaily: prevAvg == null ? null : round(prevAvg),
       prevMargin: prevMargin == null ? null : Math.round(prevMargin * 10) / 10,
@@ -377,19 +507,27 @@ export async function POST(req: NextRequest) {
     };
   });
 
+  // ── Completed months, per facility (last 12) ──────────────────────────────
+  const monthsAll = Array.from(new Set(Object.values(historyByFacility).flat().map(([m]) => m))).sort();
+  const months = monthsAll.slice(-12);
+  const monthly: Record<string, Array<{ net: number; profit: number; days: number }>> = {};
+  for (const fac of Array.from(new Set([...allFacilities, ...Object.keys(historyByFacility)]))) {
+    const h = Object.fromEntries(historyByFacility[fac] ?? []);
+    const rows = months.map((m) => ({ net: round(h[m]?.net ?? 0), profit: round(h[m]?.profit ?? 0), days: h[m]?.days ?? 0 }));
+    if (rows.some((r) => r.net > 0)) monthly[fac] = rows;
+  }
+
   // ── Inventory value per facility (card 2507: org, class, value) ───────────
   const inventoryByFacility: Record<string, number> = {};
   for (const row of invByClassRes.data.rows) {
     const fac = row[0] as string;
     inventoryByFacility[fac] = (inventoryByFacility[fac] ?? 0) + num(row[2]);
   }
-  // Monthly restock per facility (card 1661)
+  // Stock received per facility over the 30 completed days
   const restockByFacility: Record<string, number> = {};
-  for (const row of restockRes.data.rows) {
-    if (typeof row[1] === 'string' && row[1].startsWith(monthPrefix)) {
-      const fac = row[0] as string;
-      restockByFacility[fac] = (restockByFacility[fac] ?? 0) + num(row[6]);
-    }
+  for (const row of restockRes?.data?.rows ?? []) {
+    const fac = row[0] as string;
+    if (fac) restockByFacility[fac] = (restockByFacility[fac] ?? 0) + num(row[1]);
   }
   network.totalInventoryValue = round(Object.values(inventoryByFacility).reduce((s, v) => s + v, 0));
   network.totalRestockValue = round(Object.values(restockByFacility).reduce((s, v) => s + v, 0));
@@ -514,6 +652,10 @@ export async function POST(req: NextRequest) {
     facilitySummary,
     network,
     comparison,
+    history: { months, monthly },
+    netProfit,
+    unbilledAvailable: !!unbilled,
+    emrTo: unbilled?.emrTo ?? null,
     commercial: {
       topProducts: parseTopProducts(networkTopRes),
     },
