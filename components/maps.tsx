@@ -1,44 +1,19 @@
 'use client';
 
-import { useCallback, useState } from 'react';
-import { AdvancedMarker, APIProvider, InfoWindow, Map, Pin, useAdvancedMarkerRef } from '@vis.gl/react-google-maps';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  AdvancedMarker,
+  APIProvider,
+  InfoWindow,
+  Map,
+  Pin,
+  useAdvancedMarkerRef,
+  useMap,
+} from '@vis.gl/react-google-maps';
 
-type Poi = { key: string; location: google.maps.LatLngLiteral; title: string };
+import { pharmacies, type Pharmacy } from '@/app/data';
 
-const pois: Poi[] = [
-  
-  {
-    key: 'wellLiving',
-    location: { lat: -1.2638497181444144, lng: 36.926983666913614 },
-    title: 'Well Living Medical Clinic',
-  },
-  { key: 'healmerc', 
-    location: { lat: -1.250372, lng: 36.952885 }, 
-    title: 'Healmerc Pharmacy' 
-  },
-  {
-    key: 'qaalane',
-    location: { lat: -1.2787967, lng: 36.8490987 },
-    title: 'Qaalane Pharmacy and Medical Centre',
-  },
-  {
-    key: 'libken',
-    location: { lat: -1.2778697, lng: 36.8490787 },
-    title: 'Libken Medical Centre Limited',
-  },  
-  {
-    key: 'etham',
-    location: { lat: -1.2775494, lng: 36.8855136 },
-    title: 'Etham Chemists',
-  },
-  {
-    key: 'ndipo',
-    location: { lat: -1.3927459, lng: 36.9386413 },
-    title: 'Ndipo Pharm Pharmacy',
-  },
-];
-
-function PoiMarker({ poi }: { poi: Poi }) {
+function PharmacyMarker({ pharmacy }: { pharmacy: Pharmacy }) {
   const [infowindowOpen, setInfowindowOpen] = useState(false);
   const [markerRef, marker] = useAdvancedMarkerRef();
 
@@ -50,95 +25,55 @@ function PoiMarker({ poi }: { poi: Poi }) {
 
   return (
     <>
-      <AdvancedMarker ref={markerRef} position={poi.location} onClick={handleMarkerClick}>
-        <Pin background="#E63524" borderColor="#E63524" />
+      <AdvancedMarker
+        ref={markerRef}
+        position={{ lat: pharmacy.lat, lng: pharmacy.lng }}
+        title={pharmacy.name}
+        onClick={handleMarkerClick}
+      >
+        <Pin background="#E63323" borderColor="#E63323" glyphColor="#FFFFFF" />
       </AdvancedMarker>
       {infowindowOpen && (
-        <InfoWindow
-          anchor={marker}
-          maxWidth={400}
-          onClose={handleClose}
-          className="text-lg/5 font-medium text-[#111827]"
-        >
-          {poi.title}
+        <InfoWindow anchor={marker} maxWidth={400} onClose={handleClose}>
+          <div className="space-y-1 text-[#111827]">
+            <p className="text-base font-bold text-[#006CB5]">{pharmacy.name}</p>
+            <p className="text-sm">{pharmacy.location}</p>
+            <a href={pharmacy.directions} target="_blank" rel="noopener" className="text-sm font-bold underline">
+              Get directions
+            </a>
+          </div>
         </InfoWindow>
       )}
     </>
   );
 }
 
-// function PoiMarkers({ pois }: { pois: Poi[] }) {
-//   const map = useMap();
-//   const [markers, setMarkers] = useState<{ [key: string]: Marker }>({});
-//   const [infowindowOpen, setInfowindowOpen] = useState('');
-//   const clusterer = useRef<MarkerClusterer | null>(null);
+/** Zooms the map so every pharmacy pin is in view, including ones outside Nairobi. */
+function FitToPharmacies() {
+  const map = useMap();
 
-//   // Initialize MarkerClusterer, if the map has changed
-//   useEffect(() => {
-//     if (!map) return;
-//     if (!clusterer.current) {
-//       clusterer.current = new MarkerClusterer({ map });
-//     }
-//   }, [map]);
+  useEffect(() => {
+    if (!map) return;
+    const bounds = new google.maps.LatLngBounds();
+    pharmacies.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+    map.fitBounds(bounds, 48);
+  }, [map]);
 
-//   // Update markers, if the markers array has changed
-//   useEffect(() => {
-//     clusterer.current?.clearMarkers();
-//     clusterer.current?.addMarkers(Object.values(markers));
-//   }, [markers]);
-
-//   const setMarkerRef = (marker: Marker | null, key: string) => {
-//     if (marker && markers[key]) return;
-//     if (!marker && !markers[key]) return;
-
-//     setMarkers((prev) => {
-//       if (marker) {
-//         return { ...prev, [key]: marker };
-//       } else {
-//         const newMarkers = { ...prev };
-//         delete newMarkers[key];
-//         return newMarkers;
-//       }
-//     });
-//   };
-
-//   return (
-//     <>
-//       {pois.map((poi: Poi) => (
-//         <Fragment key={poi.key}>
-//           <AdvancedMarker
-//             onClick={() => setInfowindowOpen(poi.key)}
-//             position={poi.location}
-//             ref={(marker) => setMarkerRef(marker, poi.key)}
-//           >
-//             <Pin background="#E63524" borderColor="#E63524" />
-//           </AdvancedMarker>
-//           {infowindowOpen === poi.key && (
-//             <InfoWindow anchor={markers[poi.key]} maxWidth={200} onClose={() => setInfowindowOpen('')}>
-//               {poi.title}
-//             </InfoWindow>
-//           )}
-//         </Fragment>
-//       ))}
-//     </>
-//   );
-// }
+  return null;
+}
 
 export default function Maps() {
   return (
     <APIProvider apiKey="AIzaSyBXAlLJvUaeq1PlaDVI5Yr_VP1WNimeh60">
       <div className="h-96">
         <Map
-          defaultZoom={11}
-          defaultCenter={{
-            lat: -1.265436482932997,
-            lng: 36.82534134055658,
-          }}
+          defaultZoom={10}
+          defaultCenter={{ lat: -1.23, lng: 36.95 }}
           mapId="AFYANZIMA_MAP_ID"
         >
-          {/* <PoiMarkers pois={pois} /> */}
-          {pois.map((poi: Poi) => (
-            <PoiMarker key={poi.key} poi={poi} />
+          <FitToPharmacies />
+          {pharmacies.map((pharmacy) => (
+            <PharmacyMarker key={pharmacy.key} pharmacy={pharmacy} />
           ))}
         </Map>
       </div>

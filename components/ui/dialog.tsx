@@ -45,7 +45,7 @@ const DialogContent = React.forwardRef<
     >
       {children}
       <DialogPrimitive.Close className="absolute right-4 top-4 outline-none disabled:pointer-events-none">
-        <XCircleIcon className="size-8 text-[#066DB7]" />
+        <XCircleIcon className="size-8 text-[#006CB5]" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>

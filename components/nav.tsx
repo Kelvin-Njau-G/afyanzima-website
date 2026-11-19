@@ -59,14 +59,14 @@ export default function Nav() {
   // there's no such element there — it has to navigate home first.
   const sectionLinks = [
     { href: '/#pharmacies', label: 'For Patients' },
-    { href: '/#patients', label: 'For Providers' },
+    { href: '/#services', label: 'For Providers' },
   ];
 
   const showSwitcher = !!me && (me.role === 'admin' || me.facilities.length > 1);
 
   return (
     <>
-      <header className="sticky top-0 z-10 h-14 bg-white text-[#066DB7]">
+      <header className="sticky top-0 z-10 h-14 bg-white text-[#006CB5]">
         <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-4 py-2 sm:px-16">
           <div className="flex items-center space-x-10">
             <Link href="/" className="w-[6.5rem] shrink-0 sm:w-[7.25rem]">
@@ -93,7 +93,7 @@ export default function Nav() {
             {me && (
               <div className="flex items-center gap-3 text-sm max-sm:hidden">
                 <span className="max-w-[14rem] truncate text-xs text-gray-500">{me.email}</span>
-                <button onClick={signOut} className="font-bold text-[#066DB7] underline">
+                <button onClick={signOut} className="font-bold text-[#006CB5] underline">
                   Sign out
                 </button>
               </div>
@@ -115,11 +115,11 @@ export default function Nav() {
               </div>
             </div>
             <button onClick={() => setIsOpen(false)} className="sm:hidden">
-              <XMarkIcon className="size-6 text-[#066DB7]" />
+              <XMarkIcon className="size-6 text-[#006CB5]" />
               <span className="sr-only">Close Menu</span>
             </button>
           </div>
-          <nav className="space-y-6 px-6 py-8 text-center text-lg/5 font-bold text-[#066DB7]">
+          <nav className="space-y-6 px-6 py-8 text-center text-lg/5 font-bold text-[#006CB5]">
             <div className="flex flex-col space-y-6">
               {sectionLinks.map((l) => (
                 <Link key={l.href} href={l.href} onClick={() => setIsOpen(false)}>
@@ -138,7 +138,7 @@ export default function Nav() {
                       Admin
                     </Link>
                   )}
-                  <button onClick={signOut} className="font-bold text-[#066DB7] underline">
+                  <button onClick={signOut} className="font-bold text-[#006CB5] underline">
                     Sign out
                   </button>
                   <span className="text-sm font-normal text-gray-500">{me.email}</span>

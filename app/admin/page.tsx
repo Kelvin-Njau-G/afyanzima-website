@@ -168,7 +168,7 @@ export default function AdminPortal() {
               onClick={() => setTab(t)}
               className={`-mb-px border-b-2 px-4 py-2 capitalize ${
                 tab === t
-                  ? 'border-[#066DB7] font-medium text-[#066DB7]'
+                  ? 'border-[#006CB5] font-medium text-[#006CB5]'
                   : 'border-transparent text-gray-500'
               }`}
             >
@@ -193,14 +193,14 @@ export default function AdminPortal() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Registered email"
                     required
-                    className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#066DB7]"
+                    className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#006CB5]"
                   />
                   <input
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Full name (optional)"
-                    className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#066DB7]"
+                    className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#006CB5]"
                   />
                 </div>
 
@@ -255,7 +255,7 @@ export default function AdminPortal() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="rounded-lg bg-[#066DB7] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-lg bg-[#006CB5] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                 >
                   {busy ? 'Working…' : 'Create account'}
                 </button>
@@ -286,7 +286,7 @@ export default function AdminPortal() {
                       </td>
                       <td className="px-6 py-4 text-gray-600">
                         {u.role === 'admin' ? (
-                          <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-[#066DB7]">
+                          <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-[#006CB5]">
                             Admin — all facilities
                           </span>
                         ) : u.facilities.length ? (
@@ -350,7 +350,7 @@ export default function AdminPortal() {
                   }}
                   placeholder="Facility name, e.g. St Mary's Medical Centre"
                   required
-                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#066DB7]"
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#006CB5]"
                 />
                 <div>
                   <input
@@ -361,7 +361,7 @@ export default function AdminPortal() {
                       setFacilitySlug(e.target.value);
                     }}
                     placeholder="dashboard-url"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#066DB7]"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#006CB5]"
                   />
                   <p className="mt-1.5 text-xs text-gray-400">
                     Dashboard will live at /partner-facilities/
@@ -372,7 +372,7 @@ export default function AdminPortal() {
                 <button
                   type="submit"
                   disabled={busy || !facilityName.trim()}
-                  className="rounded-lg bg-[#066DB7] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                  className="rounded-lg bg-[#006CB5] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
                 >
                   {busy ? 'Working…' : 'Add facility'}
                 </button>

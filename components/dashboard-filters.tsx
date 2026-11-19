@@ -197,7 +197,7 @@ export default function DashboardFilters({
             value={month}
             disabled={monthLoading}
             onChange={(e) => onWindow({ month: e.target.value })}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#006CB5] disabled:opacity-50"
           >
             {availableMonths.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
@@ -223,7 +223,7 @@ export default function DashboardFilters({
               if (from < monthStart) onWindow({ from, to: filters.to });
               else onChange({ ...filters, from });
             }}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#006CB5] disabled:opacity-50"
           />
         </div>
         <div>
@@ -242,7 +242,7 @@ export default function DashboardFilters({
               if (to > monthEnd) onWindow({ from: filters.from, to });
               else onChange({ ...filters, to });
             }}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7] disabled:opacity-50"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#006CB5] disabled:opacity-50"
           />
         </div>
 
@@ -278,7 +278,7 @@ export default function DashboardFilters({
                 setOpen(false);
               }
             }}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#066DB7]"
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#006CB5]"
           />
           {open && suggestions.length > 0 && (
             <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
@@ -289,7 +289,7 @@ export default function DashboardFilters({
                     onMouseEnter={() => setHighlight(i)}
                     onClick={() => pick(name)}
                     className={`block w-full px-3 py-2 text-left text-sm ${
-                      i === highlight ? 'bg-gray-50 text-[#066DB7]' : 'text-gray-700'
+                      i === highlight ? 'bg-gray-50 text-[#006CB5]' : 'text-gray-700'
                     }`}
                   >
                     {name}
@@ -309,7 +309,7 @@ export default function DashboardFilters({
               title={p.title}
               className={`rounded-lg border px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
                 p.active
-                  ? 'border-[#066DB7] text-[#066DB7]'
+                  ? 'border-[#006CB5] text-[#006CB5]'
                   : 'border-gray-200 text-gray-500 hover:border-gray-300'
               }`}
             >

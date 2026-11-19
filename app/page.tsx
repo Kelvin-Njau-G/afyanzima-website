@@ -4,11 +4,7 @@ import { ArrowRightIcon, EnvelopeIcon, MapPinIcon, PhoneIcon } from '@heroicons/
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import Facebook from '@/components/icons/facebook';
 import Instagram from '@/components/icons/instagram';
-import LinkedIn from '@/components/icons/linkedIn';
 import Maps from '@/components/maps';
-import Maternal from '@/images/antenatal-postnatal.jpg';
-import Artboard from '@/images/artboard.png';
-import BabaDogo from '@/images/baba-dogo.png';
 import PharmacistHero from '@/images/pharmacist-hero.png';
 import Stocking from '@/images/stocking.png';
 import Staffing from '@/images/staffing.png';
@@ -16,15 +12,11 @@ import Operations from '@/images/operations.png';
 import Compliance from '@/images/compliance.png';
 import BrandMarketing from '@/images/brand-marketing.png';
 import HMIS from '@/images/hmis.png';
-import Dawa from '@/images/dawa.png';
-import EyeCare from '@/images/eye-care.png';
 import FooterLogo from '@/images/footer_logo.png';
-import LabServices from '@/images/Lab-services.jpg';
-import SpecialistServices from '@/images/specialist-services.png';
 import HellenTestimonial from '@/images/hellen-testimonial.jpeg';
 import MaryTestimonial from '@/images/mary-testimonial.jpeg';
 
-import { facilities, pharmacies } from './data';
+import { pharmacies, telLink } from './data';
 
 export default function Home() {
   return (
@@ -34,17 +26,17 @@ export default function Home() {
           <div className="space-y-8 sm:w-[41.375rem] sm:space-y-[3.375rem]">
             <div className="space-y-8 tracking-[-0.06em] max-sm:text-center sm:space-y-[3.75rem]">
               <div className="flex-col items-center space-y-8 max-sm:flex">
-                <h1 className="text-[2.5rem]/[3rem] font-bold text-[#066DB7] sm:text-5xl">Unlock your pharmacy&apos;s potential.</h1>
-                <div className="h-[0.3125rem] w-[5.6875rem] bg-[#066DB7]" />
+                <h1 className="text-[2.5rem]/[3rem] font-bold text-[#006CB5] sm:text-5xl">Unlock your pharmacy&apos;s potential.</h1>
+                <div className="h-[0.3125rem] w-[5.6875rem] bg-[#006CB5]" />
               </div>
-              <h1 className="text-3xl font-semibold text-[#E63524]">
+              <h1 className="text-3xl font-semibold text-[#E63323]">
                 AfyaNzima partners with primary healthcare facilities to manage on-site pharmacies, ensuring every patient leaves with their full prescription in hand.
               </h1>
               {/* --- UPDATED SECTION STARTS HERE --- */}
               <div className="grid grid-cols-1 gap-10 sm:grid-cols-2">
                 {/* Left column - Patients */}
                 <div className="space-y-6">
-                  <h2 className="text-[2rem]/[2.5rem] font-bold text-[#066DB7] sm:text-3xl">
+                  <h2 className="text-[2rem]/[2.5rem] font-bold text-[#006CB5] sm:text-3xl">
                     For Patients
                   </h2>
                   <p className="text-xl text-[#111827]">You can expect:</p>
@@ -56,12 +48,12 @@ export default function Home() {
                   <div>
                     <a
                       href="#pharmacies"
-                      className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#066DB7] hover:bg-[#066DB7] hover:text-white sm:px-6 sm:py-2"
+                      className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#006CB5] hover:bg-[#006CB5] hover:text-white sm:px-6 sm:py-2"
                     >
                       <span className="text-xs font-bold leading-tight tracking-tight sm:text-lg">
                         See our locations
                       </span>
-                      <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-white group-hover:bg-white group-hover:text-[#066DB7]">
+                      <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#006CB5] text-white group-hover:bg-white group-hover:text-[#006CB5]">
                         <ArrowRightIcon className="size-4" />
                       </div>
                     </a>
@@ -69,24 +61,24 @@ export default function Home() {
                 </div>
                 {/* Right column - Providers */}
                 <div className="space-y-6">
-                  <h2 className="text-[2rem]/[2.5rem] font-bold text-[#066DB7] sm:text-3xl">
+                  <h2 className="text-[2rem]/[2.5rem] font-bold text-[#006CB5] sm:text-3xl">
                     For Providers
                   </h2>
                   <p className="text-xl text-[#111827]">You can expect:</p>
                   <ul className="list-disc space-y-2 pl-6 text-xl text-[#111827]">
                     <li>End-to-end management support</li>
-                    <li>Free complimentary HMIS system</li>
+                    <li>Free HMIS system</li>
                     <li>Higher earnings</li>
                   </ul>
                   <div>
                     <a
-                      href="#patients"
-                      className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#066DB7] hover:bg-[#066DB7] hover:text-white sm:px-6 sm:py-2"
+                      href="#services"
+                      className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#006CB5] hover:bg-[#006CB5] hover:text-white sm:px-6 sm:py-2"
                     >
                       <span className="text-xs font-bold leading-tight tracking-tight sm:text-lg">
                         Learn more
                       </span>
-                      <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-white group-hover:bg-white group-hover:text-[#066DB7]">
+                      <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#006CB5] text-white group-hover:bg-white group-hover:text-[#006CB5]">
                         <ArrowRightIcon className="size-4" />
                       </div>
                     </a>
@@ -103,9 +95,9 @@ export default function Home() {
           </div>
         </div>
       </section>
-      <section className="px-4 sm:p-[2.625rem]" id="patients">
+      <section className="px-4 sm:p-[2.625rem]" id="services">
         <div className="mx-auto max-w-screen-2xl space-y-6 sm:space-y-[2.625rem]">
-          <h2 className="text-center text-[2.5rem]/[3rem] font-bold tracking-[-0.06em] text-[#066DB7] sm:text-5xl">
+          <h2 className="text-center text-[2.5rem]/[3rem] font-bold tracking-[-0.06em] text-[#006CB5] sm:text-5xl">
             Our services
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-8">
@@ -127,11 +119,11 @@ export default function Home() {
                       <Image src={Stocking} alt="" fill className="object-cover" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">Stocking</p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
                       Our pharmacies are fully-stocked with all essential medicines needed to treat all conditions expected in primary health care. 
-                      We use advanced data techniques to plan for expected demand ensuring you are guaranteed to find the medication you need on our shelf, everytime you need it.
+                      We use advanced data techniques to plan for expected demand ensuring you are guaranteed to find the medication you need on our shelf, every time you need it.
                       <br />
                       We enforce rigorous vetting of our suppliers and the medicines we purchase to ensure that only trusted-quality
                       medication gets to our patients.
@@ -140,11 +132,11 @@ export default function Home() {
                       <span className="italic">
                         Take the first step towards comprehensive care.{' '}
                         <span className="font-bold">Visit the nearest facility</span> to experience our one-stop approach to
-                        healthcare or <span className="font-bold">contact us</span> {' '}
+                        healthcare or <span className="font-bold">contact us</span> on{' '}
                         <span className="font-bold">0719 807 978</span> to speak to our representative.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -158,7 +150,7 @@ export default function Home() {
                     <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                       <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                       <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                        Operations Management <span className="font-normal"></span>
+                        Pharmacy Operations <span className="font-normal"></span>
                       </p>
                     </div>
                   </div>
@@ -171,7 +163,7 @@ export default function Home() {
                       <Image src={Operations} alt="" fill className="object-cover object-[83%]" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
                       Pharmacy Operations <span className="font-normal"></span>
                     </p>
@@ -185,7 +177,7 @@ export default function Home() {
                         streamline your pharmacy operations while you focus on delivering great patient care.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -198,7 +190,7 @@ export default function Home() {
                   <div className="flex flex-col justify-end space-y-2 px-2 py-3 sm:space-y-6 sm:px-9 sm:py-11">
                     <div className="h-[0.3125rem] w-[5.6875rem] bg-white" />
                     <p className="text-lg/5 font-bold leading-none text-white sm:text-[2rem]">
-                      Staffing <span className="font-normal"></span>
+                      Pharmacy Staffing <span className="font-normal"></span>
                     </p>
                   </div>
                 </div>
@@ -210,9 +202,9 @@ export default function Home() {
                       <Image src={Staffing} alt="" fill className="object-cover" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
-                      Pharmacy staffing <span className="font-normal"></span>
+                      Pharmacy Staffing <span className="font-normal"></span>
                     </p>
                     <p className="leading-[-0.06em] max-sm:text-sm">
                       Our frontline heroes that serve our patients are everything to us, and we ensure our pharmacies are manned by the best.
@@ -223,7 +215,7 @@ export default function Home() {
                         for a taste of professional service.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -248,7 +240,7 @@ export default function Home() {
                       <Image src={Compliance} alt="" fill className="object-cover" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
                       Regulatory Compliance <span className="font-normal"></span>
                     </p>
@@ -258,12 +250,12 @@ export default function Home() {
                      <br />
                       <br />
                       <span className="italic">
-                        Want the piece of mind of knowing every prescription dispensed is right? Reach out today. Let us make your pharmacy a centre of excellence.{' '}
+                        Want the peace of mind of knowing every prescription dispensed is right? Reach out today. Let us make your pharmacy a centre of excellence.{' '}
                         <span className="font-bold">Contact us</span> on{' '}
-                        <span className="font-bold">0719 807 978</span> to talk to our representantive.
+                        <span className="font-bold">0719 807 978</span> to talk to our representative.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -288,7 +280,7 @@ export default function Home() {
                       <Image src={HMIS} alt="" fill className="object-cover" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
                       HMIS <span className="font-normal"></span>
                     </p>
@@ -299,10 +291,10 @@ export default function Home() {
                       <span className="italic">
                         Inject efficiency into your clinic's operations with our HMIS system.{' '}
                         <span className="font-bold">Reach out to us</span> on{' '}
-                        <span className="font-bold">0719 807 978</span> to speak with our representantive.
+                        <span className="font-bold">0719 807 978</span> to speak with our representative.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -327,7 +319,7 @@ export default function Home() {
                       <Image src={BrandMarketing} alt="" fill className="object-cover" />
                     </div>
                   </div>
-                  <div className="space-y-4 px-16 text-[#066DB7] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
+                  <div className="space-y-4 px-16 text-[#006CB5] max-sm:px-4 max-sm:py-6 sm:w-[26rem] sm:space-y-8">
                     <p className="text-2xl font-bold sm:text-[2rem]/none">
                       Brand Marketing <span className="font-normal"></span>
                     </p>
@@ -338,10 +330,10 @@ export default function Home() {
                       <br />
                       <span className="italic">
                         Join the network. <span className="font-bold">Talk to us </span>
-                        today on <span className="font-bold">0719 807 978</span> .
+                        today on <span className="font-bold">0719 807 978</span>.
                       </span>
                     </p>
-                    <div className="h-0.5 w-16 rounded bg-[#066DB7]" />
+                    <div className="h-0.5 w-16 rounded bg-[#006CB5]" />
                   </div>
                 </div>
               </DialogContent>
@@ -354,23 +346,23 @@ export default function Home() {
       </section>
       <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16" id="pharmacies">
         <div className="mx-auto max-w-screen-2xl space-y-12">
-          <div className="space-y-8 text-center font-bold text-[#066DB7]">
+          <div className="space-y-8 text-center font-bold text-[#006CB5]">
             <h2 className="text-5xl tracking-[-0.06em]">AfyaNzima Pharmacies</h2>
           </div>
           <div className="grid gap-6 sm:grid-cols-3 sm:gap-12">
             {pharmacies.map((pharmacy) => {
-              const { name, location, phoneNumber, hours, image, insurance, directions } = pharmacy;
+              const { key, name, location, phoneNumber, hours, image, directions } = pharmacy;
 
               return (
                 <div
-                  key={name}
+                  key={key}
                   className="rounded-2xl bg-white px-6 py-8 text-[#111827] shadow-[0px_4px_4px_0px_rgba(0,_0,_0,_0.10)]"
                 >
                   <div className="flex-col space-y-6 sm:flex sm:h-full sm:justify-between">
                     <div className="aspect-h-[363] aspect-w-[350] overflow-hidden rounded-2xl bg-[#ededed]">
-                      <Image src={image} alt="" fill className="object-cover" />
+                      <Image src={image} alt={`${name} shopfront`} fill className="object-cover" />
                     </div>
-                    <p className="text-lg font-bold leading-none tracking-[-0.02em] text-[#066DB7] sm:text-2xl">
+                    <p className="text-lg font-bold leading-none tracking-[-0.02em] text-[#006CB5] sm:text-2xl">
                       {name}
                     </p>
                     <ul className="space-y-2 font-bold text-[#111827]">
@@ -378,13 +370,13 @@ export default function Home() {
                         Location: <span className="font-normal">{location}</span>
                       </li>
                       <li>
-                        Contact us: <span className="font-normal">{phoneNumber}</span>
+                        Contact us:{' '}
+                        <a href={telLink(phoneNumber)} className="font-normal underline">
+                          {phoneNumber}
+                        </a>
                       </li>
                       <li>
                         Operating Hours: <span className="font-normal">{hours}</span>
-                      </li>
-                      <li>
-                        Insurance: <span className="font-normal">{insurance}</span>
                       </li>
                     </ul>
                     <div>
@@ -392,12 +384,12 @@ export default function Home() {
                         href={directions}
                         target="_blank"
                         rel="noopener"
-                        className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#066DB7] hover:bg-[#066DB7] hover:text-white sm:px-6 sm:py-2"
+                        className="group inline-flex items-center space-x-4 rounded-full border border-blue-600 px-4 py-1 text-blue-900 hover:border-[#006CB5] hover:bg-[#006CB5] hover:text-white sm:px-6 sm:py-2"
                       >
                         <span className="text-xs font-bold leading-tight tracking-tight sm:text-lg">
                           Get directions
                         </span>
-                        <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-white group-hover:bg-white group-hover:text-[#066DB7]">
+                        <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#006CB5] text-white group-hover:bg-white group-hover:text-[#006CB5]">
                           <ArrowRightIcon className="size-4" />
                         </div>
                       </a>
@@ -413,7 +405,7 @@ export default function Home() {
       <Maps />
       <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16">
         <div className="mx-auto max-w-screen-2xl space-y-12">
-          <div className="text-center text-[#066DB7] space-y-6">
+          <div className="text-center text-[#006CB5] space-y-6">
             <h2 className="text-4xl sm:text-5xl font-bold tracking-[-0.02em]">
               Curious about what it&apos;s like partnering with us? <br className="hidden sm:block" />
               Hear from our partners.
@@ -429,7 +421,7 @@ export default function Home() {
                 “I am happy that we have never run out of stock. Our drug preferences have been honored,
                 no stock-outs have been experienced, and the terms of the contract have been upheld.”
               </p>
-              <p className="text-[#066DB7] font-bold text-lg">Director, Well Living Medical Clinic</p>
+              <p className="text-[#006CB5] font-bold text-lg">Director, Well Living Medical Clinic</p>
             </div>
             {/* Right column - Mary */}
             <div className="flex flex-col space-y-6 rounded-2xl bg-white p-6 text-[#111827] shadow-[0px_4px_4px_rgba(0,0,0,0.1)]">
@@ -440,20 +432,20 @@ export default function Home() {
                 “Pharmacy as a service has relieved me of the hustle of finding staffing for the pharmacy,
                 procuring drugs and managing the inventory. I would recommend it to my fellow clinic owners.”
               </p>
-              <p className="text-[#066DB7] font-bold text-lg">Director, Nimoli Medical Services</p>
+              <p className="text-[#006CB5] font-bold text-lg">Director, Nimoli Medical Services</p>
             </div>
           </div>
         </div>
       </section>
       <section className="bg-[#F6F8FF] px-4 py-16 sm:px-[4.5rem]" id="providers">
         <div className="mx-auto max-w-screen-2xl space-y-12">
-          <div className="space-y-6 text-[#066DB7]">
+          <div className="space-y-6 text-[#006CB5]">
             <h2 className="text-center text-5xl font-bold tracking-[-0.02em]">
               Join our growing network of partner facilities
             </h2>
           </div>
           <a
-            className="group block space-y-6 rounded-2xl bg-white p-8 text-[#066DB7] shadow-[-2px_4px_16px_0px_rgba(0,_0,_0,_0.05)] hover:bg-[#066DB7] hover:text-white sm:text-lg/[auto]"
+            className="group block space-y-6 rounded-2xl bg-white p-8 text-[#006CB5] shadow-[-2px_4px_16px_0px_rgba(0,_0,_0,_0.05)] hover:bg-[#006CB5] hover:text-white sm:text-lg/[auto]"
             href="https://forms.gle/BdG57rrBpMAgxgB8A"
             target="_blank"
             rel="noopener"
@@ -464,19 +456,19 @@ export default function Home() {
             </p>
               <div className="flex items-center space-x-4">
               <p className="font-bold tracking-[-0.02em]">Reach out to us by clicking here</p>
-              <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#066DB7] text-lg/5 text-white group-hover:bg-white group-hover:text-[#066DB7]">
+              <div className="grid size-[1.625rem] place-items-center rounded-full bg-[#006CB5] text-lg/5 text-white group-hover:bg-white group-hover:text-[#006CB5]">
                 <ArrowRightIcon className="size-4" />
               </div>
             </div>
           </a>
-          <p className="text-center font-bold tracking-[-0.02em] text-[#066DB7] max-sm:p-8 sm:text-[1.75rem]/8">
+          <p className="text-center font-bold tracking-[-0.02em] text-[#006CB5] max-sm:p-8 sm:text-[1.75rem]/8">
             We can tailor the offering to the clinic&apos;s exact needs - whether it is dealing with financial
             management, staff (training) or aspiration to grow with new offerings. As each clinic has different needs,
             we welcome you to reach out to discuss what a potential partnership could look like. 
           </p>
         </div>
       </section>
-      <footer className="bg-[#E63524] px-4 py-6 text-white sm:p-12">
+      <footer className="bg-[#E63323] px-4 py-6 text-white sm:p-12">
         <div className="mx-auto max-w-screen-2xl">
           <div className="mb-6 w-[9.4375rem] sm:mb-8">
             <div className="aspect-h-[61] aspect-w-[151]">
@@ -488,7 +480,7 @@ export default function Home() {
             <ul className="space-y-2 text-sm/4">
               <li className="flex items-center space-x-2">
                 <PhoneIcon className="size-4" />
-                <a href="tel:0727398172">0719 807 978</a>
+                <a href="tel:+254719807978">0719 807 978</a>
               </li>
              
               <li className="flex items-center space-x-2">
