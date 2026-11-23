@@ -158,7 +158,11 @@ function missedSalesQuery(from: string, to: string) {
         ['<',  adjusted('minute'), `${to}T00:00:00`],
       ],
       aggregation: [['count'], ['sum', ['field', 10455, { 'base-type': 'type/Float' }]]], // estimated lost sale value
-      breakout: [adjusted('day'), ['field', 10457, { 'base-type': 'type/Text' }]],       // pharmacy name
+      breakout: [
+        adjusted('day'),
+        ['field', 10457, { 'base-type': 'type/Text' }],   // pharmacy name
+        ['field', 10465, { 'base-type': 'type/Text' }],   // respondent (who logged it)
+      ],
     },
   };
 }
@@ -589,11 +593,32 @@ export async function POST(req: NextRequest) {
     : null;
 
   // ── Missed sales: count and estimated lost value per day and facility ────
-  const missedSales = missedRes?.data
-    ? missedRes.data.rows
-        .filter((r) => r[1])
-        .map((r) => ({ date: String(r[0]).slice(0, 10), facility: String(r[1]).trim(), count: num(r[2]), value: round(num(r[3])) }))
-    : null;
+  // Rows are per day, facility and respondent; names are typed into a form, so they're
+  // matched case- and space-insensitively and shown in title case.
+  const personName = (v: unknown) => {
+    const n = String(v ?? '').trim().replace(/\s+/g, ' ');
+    return n ? n.toLowerCase().replace(/(^|[\s'-])[a-zà-ÿ]/g, (c) => c.toUpperCase()) : 'Unknown';
+  };
+  let missedSales: Array<{ date: string; facility: string; count: number; value: number }> | null = null;
+  let missedByPerson: Array<{ date: string; facility: string; person: string; count: number; value: number }> | null = null;
+  if (missedRes?.data) {
+    const byDay: Record<string, { date: string; facility: string; count: number; value: number }> = {};
+    const byPerson: Record<string, { date: string; facility: string; person: string; count: number; value: number }> = {};
+    for (const r of missedRes.data.rows) {
+      if (!r[1]) continue;
+      const date = String(r[0]).slice(0, 10);
+      const facility = String(r[1]).trim();
+      const person = personName(r[2]);
+      const count = num(r[3]);
+      const value = num(r[4]);
+      const d = (byDay[`${date}|${facility}`] ??= { date, facility, count: 0, value: 0 });
+      d.count += count; d.value += value;
+      const p = (byPerson[`${date}|${facility}|${person}`] ??= { date, facility, person, count: 0, value: 0 });
+      p.count += count; p.value += value;
+    }
+    missedSales = Object.values(byDay).map((m) => ({ ...m, value: round(m.value) }));
+    missedByPerson = Object.values(byPerson).map((m) => ({ ...m, value: round(m.value) }));
+  }
 
   // ── Unpaid & partially paid bills, last 3 days (card 2824 — one row per bill item) ──
   type UnpaidBill = {
@@ -666,6 +691,7 @@ export async function POST(req: NextRequest) {
     reconciliation,
     discounts: { staffDaily: staffDiscountsDaily, staffMonth: staffDiscountsMonth },
     missedSales,
+    missedByPerson,
     unpaidBills,
     unpaidBillsFrom: billsFrom,
   });

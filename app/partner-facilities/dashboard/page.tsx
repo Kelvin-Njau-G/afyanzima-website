@@ -68,6 +68,7 @@ type OverviewData = {
     staffMonth: Array<{ facility: string; staff: string; gross: number; discount: number; bills: number }> | null;
   };
   missedSales: Array<{ date: string; facility: string; count: number; value: number }> | null;
+  missedByPerson: Array<{ date: string; facility: string; person: string; count: number; value: number }> | null;
   unpaidBills: Array<{
     facility: string; order: string; status: string; createdAt: string; staff: string;
     payable: number; paid: number; balance: number; items: string[];
@@ -173,6 +174,8 @@ export default function OverviewDashboard() {
   const stackChartRef = useRef<unknown>(null);
   const monthRef = useRef<HTMLCanvasElement>(null);
   const monthChartRef = useRef<unknown>(null);
+  const missRef = useRef<HTMLCanvasElement>(null);
+  const missChartRef = useRef<unknown>(null);
   const drillRef = useRef<HTMLDivElement>(null);
 
   // Admins signed into the portal skip the password prompt entirely.
@@ -283,13 +286,81 @@ export default function OverviewDashboard() {
     renderMonthChart(data, facility === ALL
       ? [...data.allFacilities.filter((f) => data.history.monthly[f]), ...Object.keys(data.history.monthly).filter((f) => !data.allFacilities.includes(f))]
       : facs.filter((f) => data.history.monthly[f]));
+    renderMissedChart(data, facs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, chartReady, facs]);
 
   useEffect(() => () => {
     if (stackChartRef.current) (stackChartRef.current as { destroy(): void }).destroy();
     if (monthChartRef.current) (monthChartRef.current as { destroy(): void }).destroy();
+    if (missChartRef.current) (missChartRef.current as { destroy(): void }).destroy();
   }, []);
+
+  /**
+   * Missed sales logged per day: stacked by facility, or by the person who logged them
+   * when one facility is selected. Bar height = number of entries; tooltip adds the value.
+   */
+  function renderMissedChart(d: OverviewData, scope: string[]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Chart = (window as any).Chart;
+    if (!Chart || !missRef.current || !d.missedByPerson) return;
+    if (missChartRef.current) (missChartRef.current as { destroy(): void }).destroy();
+    const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const textColor = isDark ? '#b4b2a9' : '#888780';
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const rows = d.missedByPerson.filter((r) => scope.includes(r.facility));
+    const byPerson = scope.length === 1;
+    const keys = byPerson
+      ? Array.from(new Set(rows.map((r) => r.person))).sort((a, b) =>
+          rows.filter((r) => r.person === b).reduce((s, r) => s + r.count, 0) - rows.filter((r) => r.person === a).reduce((s, r) => s + r.count, 0))
+      : scope;
+    const keyOf = (r: { facility: string; person: string }) => (byPerson ? r.person : r.facility);
+    const cell: Record<string, { count: number; value: number }> = {};
+    for (const r of rows) {
+      const c = (cell[`${keyOf(r)}|${r.date}`] ??= { count: 0, value: 0 });
+      c.count += r.count; c.value += r.value;
+    }
+    const at = (k: string, i: number) => cell[`${k}|${d.dates[i]}`] ?? { count: 0, value: 0 };
+    const labels = d.dateLabels.map((l, i) => (d.dates[i] === d.today ? `${l} (so far)` : l));
+    missChartRef.current = new Chart(missRef.current, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: keys.map((k, j) => ({
+          label: k,
+          data: d.dates.map((_, i) => at(k, i).count),
+          backgroundColor: byPerson ? PALETTE[j % PALETTE.length] : colorOf(k),
+          stack: 'm', borderWidth: 0,
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: byPerson, position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, color: textColor } },
+          tooltip: {
+            callbacks: {
+              title: (items: { dataIndex: number }[]) => {
+                const i = items[0].dataIndex;
+                const t = keys.reduce((a, k) => ({ count: a.count + at(k, i).count, value: a.value + at(k, i).value }), { count: 0, value: 0 });
+                return `${labels[i]} · ${t.count} missed · KSh ${fmt(t.value)}`;
+              },
+              label: (ctx: { dataIndex: number; parsed: { y: number }; dataset: { label: string } }) => {
+                if (!ctx.parsed.y) return null;
+                const c = at(ctx.dataset.label, ctx.dataIndex);
+                return `  ${byPerson ? ctx.dataset.label : shortName(ctx.dataset.label)}: ${c.count} · KSh ${fmt(c.value)}`;
+              },
+            },
+            padding: 10, boxPadding: 4,
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: textColor, autoSkip: false, maxRotation: 45 } },
+          y: { stacked: true, beginAtZero: true, grid: { color: gridColor }, ticks: { font: { size: 11 }, color: textColor, precision: 0 } },
+        },
+      },
+    });
+  }
 
   /** Completed months: billed net revenue stacked by facility, GP margin of the selection as a line. */
   function renderMonthChart(d: OverviewData, scope: string[]) {
@@ -545,6 +616,17 @@ export default function OverviewDashboard() {
   const missedAt = (fac: string, d: string) => missed?.find((m) => m.facility === fac && m.date === d);
   const missedMonth = (fac: string) =>
     (missed ?? []).filter((m) => m.facility === fac).reduce((a, m) => ({ count: a.count + m.count, value: a.value + m.value }), { count: 0, value: 0 });
+  // Per person over the window: who logs missed sales, how often, and when last.
+  const missedPeople = (() => {
+    const m: Record<string, { facility: string; person: string; count: number; value: number; days: Set<string>; last: string }> = {};
+    for (const r of data.missedByPerson ?? []) {
+      if (!facs.includes(r.facility)) continue;
+      const p = (m[`${r.facility}|${r.person}`] ??= { facility: r.facility, person: r.person, count: 0, value: 0, days: new Set(), last: '' });
+      p.count += r.count; p.value += r.value; p.days.add(r.date);
+      if (r.date > p.last) p.last = r.date;
+    }
+    return Object.values(m).sort((a, b) => facs.indexOf(a.facility) - facs.indexOf(b.facility) || b.count - a.count);
+  })();
   const missedDates = Array.from(new Set((missed ?? []).filter((m) => facs.includes(m.facility)).map((m) => m.date))).sort().reverse();
   const MissedCell = ({ m }: { m?: { count: number; value: number } }) =>
     !m || !m.count ? <span className="text-gray-300">—</span> : (
@@ -1120,6 +1202,55 @@ export default function OverviewDashboard() {
           title="Missed sales"
           sub="Entries logged by pharmacy staff · number of missed sales and estimated lost sale value (KSh). Entries without a matched product have no value estimate."
         />
+        {missed && data.missedByPerson && (
+          <>
+            <Label>Missed sales logged per day {isAll ? 'by facility' : `— ${shortName(facility)}, by person`}</Label>
+            <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5">
+              <div className="relative h-64 w-full">
+                <canvas
+                  ref={missRef}
+                  role="img"
+                  aria-label={`Stacked bar chart of missed sales logged per day over the last ${net.windowDays} days, ${isAll ? 'by facility' : 'by the person who logged them'}.`}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-gray-400">
+                Bar height = number of entries; hover for the estimated lost value.{isAll ? ' Select a facility above to split its bars by the person logging.' : ''}
+              </p>
+            </div>
+
+            <Label>Who is logging missed sales — last {net.windowDays} days</Label>
+            <div className={tableWrap}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className={headRow}>
+                    <th className={th}>Facility</th>
+                    <th className={th}>Logged by</th>
+                    <th className={thR}>Entries</th>
+                    <th className={thR}>Est. lost value</th>
+                    <th className={thR}>Days with entries</th>
+                    <th className={thR}>Last entry</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {missedPeople.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-4 text-center text-xs text-gray-400">No missed sales logged in the last {net.windowDays} days.</td></tr>
+                  )}
+                  {missedPeople.map((p, i) => (
+                    <tr key={`${p.facility}|${p.person}`} className={zebra(i)}>
+                      <td className={`${td} text-gray-700`}><Dot color={colorOf(p.facility)} />{shortName(p.facility)}</td>
+                      <td className={`${td} font-medium text-gray-800`}>{p.person}</td>
+                      <td className={`${tdR} font-medium text-gray-900`}>{p.count}</td>
+                      <td className={`${tdR} text-gray-700`}>{p.value ? fmt(p.value) : <span className="text-gray-300">—</span>}</td>
+                      <td className={`${tdR} text-gray-700`}>{p.days.size}</td>
+                      <td className={`${tdR} text-gray-500`}>{dayLabel(p.last)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Label>Missed sales per day and facility</Label>
+          </>
+        )}
         {!missed ? <Unavailable what="missed sales" /> : (
           <div className={tableWrap}>
             <table className="w-full text-sm">
