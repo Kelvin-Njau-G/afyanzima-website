@@ -81,6 +81,7 @@ export default function Nav() {
               {me ? (
                 <>
                   {showSwitcher && <Link href="/partner-portal/facilities">My Dashboards</Link>}
+                  {me.role === 'admin' && <Link href="/partner-facilities/dashboard">All Facilities</Link>}
                   {me.role === 'admin' && <Link href="/admin">Admin</Link>}
                 </>
               ) : (
@@ -131,6 +132,11 @@ export default function Nav() {
                   {showSwitcher && (
                     <Link href="/partner-portal/facilities" onClick={() => setIsOpen(false)}>
                       My Dashboards
+                    </Link>
+                  )}
+                  {me.role === 'admin' && (
+                    <Link href="/partner-facilities/dashboard" onClick={() => setIsOpen(false)}>
+                      All Facilities
                     </Link>
                   )}
                   {me.role === 'admin' && (

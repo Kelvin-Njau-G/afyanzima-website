@@ -73,6 +73,15 @@ export default function FacilityPicker() {
 
         {me?.role === 'admin' && (
           <Link
+            href="/partner-facilities/dashboard"
+            className="mt-4 block rounded-lg bg-[#006CB5] px-4 py-3 text-center text-sm font-medium text-white hover:opacity-90"
+          >
+            All facilities overview
+          </Link>
+        )}
+
+        {me?.role === 'admin' && (
+          <Link
             href="/admin"
             className="mt-4 block rounded-lg border border-dashed border-gray-300 px-4 py-3 text-center text-sm text-gray-600 hover:border-[#006CB5] hover:text-[#006CB5]"
           >
