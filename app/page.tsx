@@ -4,7 +4,9 @@ import { ArrowRightIcon, EnvelopeIcon, MapPinIcon, PhoneIcon } from '@heroicons/
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import Facebook from '@/components/icons/facebook';
 import Instagram from '@/components/icons/instagram';
+import CardCarousel from '@/components/card-carousel';
 import Maps from '@/components/maps';
+import TestimonialCard from '@/components/testimonial-card';
 import PharmacistHero from '@/images/pharmacist-hero.png';
 import Stocking from '@/images/stocking.png';
 import Staffing from '@/images/staffing.png';
@@ -13,12 +15,17 @@ import Compliance from '@/images/compliance.png';
 import BrandMarketing from '@/images/brand-marketing.png';
 import HMIS from '@/images/hmis.png';
 import FooterLogo from '@/images/footer_logo.png';
-import HellenTestimonial from '@/images/hellen-testimonial.jpeg';
-import MaryTestimonial from '@/images/mary-testimonial.jpeg';
+import { listPublishedTestimonials } from '@/lib/testimonials/server';
 
 import { pharmacies, telLink } from './data';
 
-export default function Home() {
+// Testimonials are published from /admin. The page refreshes the moment one is
+// published or edited, and also every 5 minutes as a fallback.
+export const revalidate = 300;
+
+export default async function Home() {
+  const testimonials = await listPublishedTestimonials();
+
   return (
     <main>
       <section className="px-4 py-6 sm:p-14">
@@ -349,16 +356,16 @@ export default function Home() {
           <div className="space-y-8 text-center font-bold text-[#006CB5]">
             <h2 className="text-5xl tracking-[-0.06em]">AfyaNzima Pharmacies</h2>
           </div>
-          <div className="grid gap-6 sm:grid-cols-3 sm:gap-12">
+          <CardCarousel label="AfyaNzima pharmacies">
             {pharmacies.map((pharmacy) => {
               const { key, name, location, phoneNumber, hours, image, directions } = pharmacy;
 
               return (
                 <div
                   key={key}
-                  className="rounded-2xl bg-white px-6 py-8 text-[#111827] shadow-[0px_4px_4px_0px_rgba(0,_0,_0,_0.10)]"
+                  className="w-full rounded-2xl bg-white px-6 py-8 text-[#111827] shadow-[0px_4px_4px_0px_rgba(0,_0,_0,_0.10)]"
                 >
-                  <div className="flex-col space-y-6 sm:flex sm:h-full sm:justify-between">
+                  <div className="flex h-full flex-col justify-between space-y-6">
                     <div className="aspect-h-[363] aspect-w-[350] overflow-hidden rounded-2xl bg-[#ededed]">
                       <Image src={image} alt={`${name} shopfront`} fill className="object-cover" />
                     </div>
@@ -398,45 +405,28 @@ export default function Home() {
                 </div>
               );
             })}
-          </div>
+          </CardCarousel>
         </div>
       </section>
-      
+
       <Maps />
-      <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16">
-        <div className="mx-auto max-w-screen-2xl space-y-12">
-          <div className="text-center text-[#006CB5] space-y-6">
-            <h2 className="text-4xl sm:text-5xl font-bold tracking-[-0.02em]">
-              Curious about what it&apos;s like partnering with us? <br className="hidden sm:block" />
-              Hear from our partners.
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 sm:gap-12">
-            {/* Left column - Hellen */}
-            <div className="flex flex-col space-y-6 rounded-2xl bg-white p-6 text-[#111827] shadow-[0px_4px_4px_rgba(0,0,0,0.1)]">
-              <div className="aspect-h-[350] aspect-w-[350] overflow-hidden rounded-2xl">
-                <Image src={HellenTestimonial} alt="Hellen testimonial" fill className="object-cover" />
-              </div>
-              <p className="text-lg italic">
-                “I am happy that we have never run out of stock. Our drug preferences have been honored,
-                no stock-outs have been experienced, and the terms of the contract have been upheld.”
-              </p>
-              <p className="text-[#006CB5] font-bold text-lg">Director, Well Living Medical Clinic</p>
+      {testimonials.length > 0 && (
+        <section className="bg-[#FFF6F5] px-4 py-12 sm:px-[4.5rem] sm:py-16" id="testimonials">
+          <div className="mx-auto max-w-screen-2xl space-y-12">
+            <div className="space-y-6 text-center text-[#006CB5]">
+              <h2 className="text-4xl font-bold tracking-[-0.02em] sm:text-5xl">
+                Curious about what it&apos;s like partnering with us? <br className="hidden sm:block" />
+                Hear from our partners.
+              </h2>
             </div>
-            {/* Right column - Mary */}
-            <div className="flex flex-col space-y-6 rounded-2xl bg-white p-6 text-[#111827] shadow-[0px_4px_4px_rgba(0,0,0,0.1)]">
-              <div className="aspect-h-[350] aspect-w-[350] overflow-hidden rounded-2xl">
-                <Image src={MaryTestimonial} alt="Mary testimonial" fill className="object-cover" />
-              </div>
-              <p className="text-lg italic">
-                “Pharmacy as a service has relieved me of the hustle of finding staffing for the pharmacy,
-                procuring drugs and managing the inventory. I would recommend it to my fellow clinic owners.”
-              </p>
-              <p className="text-[#006CB5] font-bold text-lg">Director, Nimoli Medical Services</p>
-            </div>
+            <CardCarousel label="Partner testimonials">
+              {testimonials.map((t) => (
+                <TestimonialCard key={t.id} t={t} />
+              ))}
+            </CardCarousel>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
       <section className="bg-[#F6F8FF] px-4 py-16 sm:px-[4.5rem]" id="providers">
         <div className="mx-auto max-w-screen-2xl space-y-12">
           <div className="space-y-6 text-[#006CB5]">

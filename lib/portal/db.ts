@@ -17,6 +17,12 @@ if (!url || !serviceRoleKey) {
 
 export const portalDb = createClient(url, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
+  // Next.js 14 stores fetch() responses in its Data Cache by default, even in
+  // routes marked force-dynamic, and the Supabase client talks to the database
+  // over fetch(). Without no-store, a lookup such as "is this user still
+  // active?" or "has this testimonial been submitted?" can be answered from a
+  // cached copy indefinitely. Every portal read must hit the database.
+  global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) },
 });
 
 export type PortalUser = {

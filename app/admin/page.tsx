@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import TestimonialsAdmin from '@/components/admin/testimonials-admin';
+
 type AdminUser = {
   id: string;
   email: string;
@@ -18,7 +20,7 @@ type AdminUser = {
 type Facility = { slug: string; name: string };
 type ManagedFacility = Facility & { is_active: boolean; userCount: number };
 
-type Tab = 'accounts' | 'facilities';
+type Tab = 'accounts' | 'facilities' | 'testimonials';
 
 /** Mirrors slugify() on the server so the preview matches what gets saved. */
 function slugify(name: string) {
@@ -153,7 +155,7 @@ export default function AdminPortal() {
           <div>
             <h1 className="text-xl font-medium text-gray-900">Portal administration</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Manage who can sign in, and which facilities they can see.
+              Manage who can sign in, which facilities they can see, and partner testimonials.
             </p>
           </div>
           <button onClick={signOut} className="text-xs text-gray-400 underline">
@@ -162,7 +164,7 @@ export default function AdminPortal() {
         </div>
 
         <div className="mb-8 flex gap-1 border-b border-gray-200 text-sm">
-          {(['accounts', 'facilities'] as Tab[]).map((t) => (
+          {(['accounts', 'facilities', 'testimonials'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -181,7 +183,9 @@ export default function AdminPortal() {
           <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         )}
 
-        {tab === 'accounts' ? (
+        {tab === 'testimonials' ? (
+          <TestimonialsAdmin accounts={users} facilities={allFacilities} />
+        ) : tab === 'accounts' ? (
           <>
             <section className="mb-10 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-sm font-medium text-gray-700">Add an account</h2>
